@@ -16,6 +16,8 @@ static void ble_stack_sync_callback(void);
 
 // Private functions for the task
 static int gap_event_callback(struct ble_gap_event *event, void *arg);
+static int start_advertising();
+static int send();
 
 // Prototypes for BLE functions
 void ble_store_config_init(void);
@@ -43,68 +45,37 @@ int hogp_conn_setup(hogp_init_info_t *init_info) {
 
 void hogp_conn_task(void *params) {
 
-    while (!(connection.flags & HOGP_MUST_CLOSE_FLAG)) {
+    while (1) {
 
-        // TODO
-        if (connection.flags & HOGP_NEED_ADV_FLAG) {
-            int rc = 0;
-            const char *name;
-    
-            struct ble_hs_adv_fields adv_fields = {0};
-            struct ble_hs_adv_fields rsp_fields = {0};
-            struct ble_gap_adv_params adv_params = {0};
-    
-            /*name = ble_svc_gap_device_name();
-            adv_fields.name = (uint8_t *)name;
-            adv_fields.name_len = strlen(name);
-            adv_fields.name_is_complete = 1;*/
-            adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-            /*adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-            adv_fields.tx_pwr_lvl_is_present = 1;*/
-            adv_fields.appearance = connection.appearance;
-            adv_fields.appearance_is_present = 1;
-            /*adv_fields.le_role = BLE_GAP_LE_ROLE_PERIPHERAL;
-            adv_fields.le_role_is_present = 1;*/
-            adv_fields.uuids16 = (ble_uuid16_t[]) { BLE_UUID16_INIT(BLE_UUID_HID_SERVICE) };
-            adv_fields.num_uuids16 = 1;
-            adv_fields.uuids16_is_complete = 1;
-    
-            rc = ble_gap_adv_set_fields(&adv_fields);
-            if (rc != 0) {
-                ESP_LOGE(HID_TAG, "failed to set advertising data, error code: %d", rc);
-                return;
-            }
-    
-            name = ble_svc_gap_device_name();
-            rsp_fields.name = (uint8_t *)name;
-            rsp_fields.name_len = strlen(name);
-            rsp_fields.name_is_complete = 1;
-            /*rsp_fields.device_addr = connection.addr_val;
-            rsp_fields.device_addr_type = connection.own_addr_type;
-            rsp_fields.device_addr_is_present = 1;
-            rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(500);
-            rsp_fields.adv_itvl_is_present = 1;*/
-    
-            rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
-            if (rc != 0) {
-                ESP_LOGE(HID_TAG, "failed to set scan response data, error code: %d", rc);
-                return;
-            }
-    
-            adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
-            adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-            adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500);
-            adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(510);
-    
-            rc = ble_gap_adv_start(connection.own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event_callback, NULL);
-            if (rc != 0) {
-                ESP_LOGE(HID_TAG, "failed to start advertising, error code: %d", rc);
-                return;
-            }
-            
-            ESP_LOGI(HID_TAG, "advertising started!");
-            connection.flags &= ~HOGP_NEED_ADV_FLAG;    // not needind advertising anymore
+        xSemaphoreTake(connection.mutex, portMAX_DELAY);
+        
+        // check not terminated
+        if (connection.flags & HOGP_TERMINATED_FLAG) {
+            ESP_LOGE(HID_TAG, "Bluetooth task was set as terminated, but still running");
+            xSemaphoreGive(connection.mutex);
+            break;
         }
+        
+        // check if must terminate
+        if (connection.flags & HOGP_MUST_CLOSE_FLAG) {
+            ESP_LOGI(HID_TAG, "Shutting down the bluetooth task");
+            xSemaphoreGive(connection.mutex);
+            break;
+        }
+        
+        // need advertising and not connected
+        if (!(connection.flags & HOGP_CONNECTED_FLAG) && connection.flags & HOGP_NEED_ADV_FLAG) {
+            start_advertising();
+            connection.flags &= ~HOGP_NEED_ADV_FLAG;
+        }
+
+        // connected, there are updates to send, can send
+        if (connection.flags & HOGP_CONNECTED_FLAG && connection.flags & HOGP_UPDATED_FLAG && connection.flags & HOGP_CAN_SEND_FLAG) {
+            send();
+            connection.flags &= ~(HOGP_UPDATED_FLAG | HOGP_CAN_SEND_FLAG);  // set updated and can send to false
+        }
+
+        xSemaphoreGive(connection.mutex);
 
         vTaskDelay(connection.update_period_ms / portTICK_PERIOD_MS);
     }
@@ -115,7 +86,12 @@ void hogp_conn_task(void *params) {
 }
 
 int hogp_conn_shutdown(void) {
+    int rc = 0;
+
+    xSemaphoreTake(connection.mutex, portMAX_DELAY);
     connection.flags |= HOGP_MUST_CLOSE_FLAG;
+    bool connected = connection.flags & HOGP_CONNECTED_FLAG;
+    xSemaphoreGive(connection.mutex);
 
     while (!(connection.flags & HOGP_TERMINATED_FLAG)) {
         vTaskDelay(1 / portTICK_PERIOD_MS);
@@ -126,10 +102,12 @@ int hogp_conn_shutdown(void) {
     if (connection.keyboards != NULL && connection.n_keyboards) free(connection.keyboards);
     if (connection.customs != NULL && connection.n_customs) free(connection.customs);
 
-    // disconnect
-    int rc = ble_gap_terminate(connection.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-    if (rc != 0) {
-        ESP_LOGE(HID_TAG, "Failed to disconnect, error: %d", rc);
+    // disconnect if connected
+    if (connected) {
+        rc = ble_gap_terminate(connection.conn_handle, BLE_ERR_RD_CONN_TERM_PWROFF);    // FIX: this returns an error code
+        if (rc != 0) {
+            ESP_LOGE(HID_TAG, "Failed to disconnect, error: %d", rc);
+        }
     }
 
     return rc;
@@ -195,6 +173,7 @@ static int init_connection_data(hogp_init_info_t *init_info) {
         .mice = NULL,
         .keyboards = NULL,
         .customs = NULL,
+        .mutex = xSemaphoreCreateMutex(),
         .protocol = HOGP_REPORT,
         .conn_handle = 0,
         .mtu = 23,
@@ -313,8 +292,11 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
             }
 
             // set as connected + can send
+            xSemaphoreTake(connection.mutex, portMAX_DELAY);
+            connection.conn_handle = event->connect.conn_handle;
             connection.flags |= HOGP_CONNECTED_FLAG;
             connection.flags |= HOGP_CAN_SEND_FLAG;
+            xSemaphoreGive(connection.mutex);
 
             struct ble_gap_upd_params params = {
                 .itvl_min = desc.conn_itvl,
@@ -331,8 +313,10 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         }
         else {
             // set as not connected + need advertising
-            connection.flags &= HOGP_CONNECTED_FLAG;
+            xSemaphoreTake(connection.mutex, portMAX_DELAY);
+            connection.flags &= ~HOGP_CONNECTED_FLAG;
             connection.flags |= HOGP_NEED_ADV_FLAG;
+            xSemaphoreGive(connection.mutex);
         }
         return rc;
 
@@ -340,8 +324,10 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         ESP_LOGI(HID_TAG, "disconnected from peer; reason=%d", event->disconnect.reason);
 
         // set as not connected + need advertising
-        connection.flags &= HOGP_CONNECTED_FLAG;
+        xSemaphoreTake(connection.mutex, portMAX_DELAY);
+        connection.flags &= ~HOGP_CONNECTED_FLAG;
         connection.flags |= HOGP_NEED_ADV_FLAG;
+        xSemaphoreGive(connection.mutex);
         return rc;
 
     case BLE_GAP_EVENT_CONN_UPDATE:
@@ -358,13 +344,17 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         ESP_LOGI(HID_TAG, "advertise complete; reason=%d", event->adv_complete.reason);
 
         // set as not connected + need advertising
-        connection.flags &= HOGP_CONNECTED_FLAG;
+        xSemaphoreTake(connection.mutex, portMAX_DELAY);
+        connection.flags &= ~HOGP_CONNECTED_FLAG;
         connection.flags |= HOGP_NEED_ADV_FLAG;
+        xSemaphoreGive(connection.mutex);
         return rc;
 
     case BLE_GAP_EVENT_NOTIFY_TX:
-        if ((event->notify_tx.status != 0) && (event->notify_tx.status != BLE_HS_EDONE)) {  // TODO check these conditions
+        if (event->notify_tx.status == 0) {
+            xSemaphoreTake(connection.mutex, portMAX_DELAY);
             connection.flags |= HOGP_CAN_SEND_FLAG;
+            xSemaphoreGive(connection.mutex);
         }
         return rc;
 
@@ -380,10 +370,76 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
 
     case BLE_GAP_EVENT_MTU:
         ESP_LOGI(HID_TAG, "mtu update event; conn_handle=%d cid=%d mtu=%d", event->mtu.conn_handle, event->mtu.channel_id, event->mtu.value);
+        xSemaphoreTake(connection.mutex, portMAX_DELAY);
         connection.mtu = event->mtu.value;
+        xSemaphoreGive(connection.mutex);
         return rc;
     }
 
     return rc;
+}
 
+static int start_advertising() {
+    int rc = 0;
+    const char *name;
+
+    struct ble_hs_adv_fields adv_fields = {0};
+    struct ble_hs_adv_fields rsp_fields = {0};
+    struct ble_gap_adv_params adv_params = {0};
+
+    /*name = ble_svc_gap_device_name();
+    adv_fields.name = (uint8_t *)name;
+    adv_fields.name_len = strlen(name);
+    adv_fields.name_is_complete = 1;*/
+    adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    /*adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    adv_fields.tx_pwr_lvl_is_present = 1;*/
+    adv_fields.appearance = connection.appearance;
+    adv_fields.appearance_is_present = 1;
+    /*adv_fields.le_role = BLE_GAP_LE_ROLE_PERIPHERAL;
+    adv_fields.le_role_is_present = 1;*/
+    adv_fields.uuids16 = (ble_uuid16_t[]) { BLE_UUID16_INIT(BLE_UUID_HID_SERVICE) };
+    adv_fields.num_uuids16 = 1;
+    adv_fields.uuids16_is_complete = 1;
+
+    rc = ble_gap_adv_set_fields(&adv_fields);
+    if (rc != 0) {
+        ESP_LOGE(HID_TAG, "failed to set advertising data, error code: %d", rc);
+        return rc;
+    }
+
+    name = ble_svc_gap_device_name();
+    rsp_fields.name = (uint8_t *)name;
+    rsp_fields.name_len = strlen(name);
+    rsp_fields.name_is_complete = 1;
+    /*rsp_fields.device_addr = connection.addr_val;
+    rsp_fields.device_addr_type = connection.own_addr_type;
+    rsp_fields.device_addr_is_present = 1;
+    rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(500);
+    rsp_fields.adv_itvl_is_present = 1;*/
+
+    rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+    if (rc != 0) {
+        ESP_LOGE(HID_TAG, "failed to set scan response data, error code: %d", rc);
+        return rc;
+    }
+
+    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
+    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500);
+    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(510);
+
+    rc = ble_gap_adv_start(connection.own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event_callback, NULL);
+    if (rc != 0) {
+        ESP_LOGE(HID_TAG, "failed to start advertising, error code: %d", rc);
+        return rc;
+    }
+
+    ESP_LOGI(HID_TAG, "advertising started!");    
+
+    return rc;
+}
+
+static int send() {
+    return 0;
 }

@@ -3,6 +3,7 @@
 
 #include "hogp.h"
 #include "hogp_device.h"
+//#include "freertos/smphr.h"
 
 /**
  * @brief Protocols for HID messages.
@@ -19,6 +20,8 @@ typedef struct {
     hogp_mouse_t *mice;
     hogp_keyboard_t *keyboards;
     hogp_custom_t *customs;
+
+    SemaphoreHandle_t mutex;
 
     volatile hogp_protocol_t protocol;
     volatile uint16_t conn_handle;
@@ -55,6 +58,7 @@ int hogp_conn_setup(hogp_init_info_t *init_info);
 
 /**
  * @brief FreeRTOS task that manages the Bluetooth connection.
+ * Call this function after hogp_conn_setup(hogp_init_info_t *init_info) has returned with success, otherwise race conditions will occur.
  */
 void hogp_conn_task(void *params);
 
