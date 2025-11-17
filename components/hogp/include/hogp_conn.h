@@ -3,35 +3,17 @@
 
 #include "hogp.h"
 #include "hogp_device.h"
-//#include "freertos/smphr.h"
-
-/**
- * @brief Protocols for HID messages.
- */
-typedef enum {
-    HOGP_BOOT,
-    HOGP_REPORT
-} hogp_protocol_t;
 
 /**
  * @brief Bluetooth connection data and HID over GATT Profile info.
  */
 typedef struct {
-    hogp_mouse_t *mice;
-    hogp_keyboard_t *keyboards;
-    hogp_custom_t *customs;
-
     SemaphoreHandle_t mutex;
 
-    volatile hogp_protocol_t protocol;
     volatile uint16_t conn_handle;
     volatile uint16_t mtu;
     uint16_t update_period_ms;
     uint16_t appearance;
-
-    uint16_t n_mice;
-    uint16_t n_keyboards;
-    uint16_t n_customs;
 
     char device_name[HOGP_MAX_DEVICE_NAME_CHARACTERS + 1];
 
@@ -50,6 +32,7 @@ typedef struct {
 #define HOGP_MUST_CLOSE_FLAG    8   /**< 0 in normal condition, 1 if a task requested to close the connection */
 #define HOGP_UPDATED_FLAG       16  /**< 0 if no updates were received from any tasks, 1 if we have some updates to send to the HID host */
 #define HOGP_TERMINATED_FLAG    32  /**< 0 if the hogp task is running, 1 if it terminated */
+#define HOGP_SUSPENDED_FLAG     64  /**< 0 is not suspended, 1 if suspended */
 
 /**
  * @brief Initialize Bluetooth connection and HID over GATT Profile data.

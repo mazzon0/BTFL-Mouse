@@ -1,47 +1,79 @@
 #ifndef HOGP_DEVICE_H
 #define HOGP_DEVICE_H
-/**
- * @brief This file can be used to manage and initialize data for HID devices.
- * There are 3 structures, one for each HID device type (mouse, keyboard, custom), called hogp_x_t.
- * There are 3 functions to initialize those structures, called hogp_x_init().
- */
+
+#include "hogp_common.h"
 
 /**
- * @brief Data for mouse service.
+ * @brief This file defines an abstraction over an HID Device and its GATT services.
  */
-typedef struct {
-    int n;
-} hogp_mouse_t;
+
+#define N_CHARACTERISTICS   16
+#define MAX_SERVICES        16
 
 /**
- * @brief Data for keyboard service.
+ * @brief Data for a BLE Characteristics.
  */
 typedef struct {
-    int n;
-} hogp_keyboard_t;
+    uint16_t handle;
+    bool subscribed;
+} hogp_characteristic_t;
 
 /**
- * @brief Data for custom HID service.
+ * @brief Data for an HID device.
  */
 typedef struct {
-    int n;
-} hogp_custom_t;
-
-// TODO add configurations in following functions
-
-/**
- * @brief Init mouse service data given a configuration.
- */
-int hogp_mouse_init(hogp_mouse_t *mouse);
-
-/**
- * @brief Init keyboard service data given a configuration.
- */
-int hogp_keyboard_init(hogp_keyboard_t *keyboard);
+    hogp_characteristic_t characteristics[N_CHARACTERISTICS];
+    struct ble_gatt_svc_def *services;
+    uint16_t *service_uuids;
+    int (*suspend_cb)(bool);
+    uint16_t conn_handle;
+    uint8_t n_services;
+    uint8_t n_batteries;
+    uint8_t flags;
+} hogp_hid_device_t;
 
 /**
- * @brief Init custom HID service data given a configuration.
+ * @brief Data for initializing an HID device.
  */
-int hogp_custom_init(hogp_custom_t *custom);
+typedef struct {
+    int (*suspend_cb)(bool);
+    uint16_t conn_handle;
+    uint8_t n_batteries;
+    uint8_t flags;
+} hogp_hid_device_init_info_t;
+
+/**
+ * @brief Masks for the flags field of hogp_hid_device_init_into_t.
+ */
+#define HOGP_MOUSE_DEVICE       1   /**< 0 if the device should contain no mouse data, 1 otherwise */
+#define HOGP_KEYBOARD_DEVICE    2   /**< 0 if the device should contain no keyboard data, 1 otherwise */
+#define HOGP_CUSTOM_DEVICE      4   /**< 0 if the device should contain no custom hid data, 1 otherwise */
+
+/**
+ * @brief Init HID device data.
+ */
+int hogp_hid_device_setup(hogp_hid_device_init_info_t *init_info);
+
+/**
+ * @brief Shutdown HID device data.
+ */
+int hogp_hid_device_shutdown(void);
+
+/**
+ * @brief Get the array of UUIDs representing the services the device can provide.
+ * @return The array of UUIDs (to understand the meaning of the UUIDs, check the SIG Assigned Numbers)
+ */
+const ble_uuid16_t *const hogp_device_get_services_uuids(void);
+
+/**
+ * @brief Get the length of the array returned from hogp_device_get_service.
+ * @return Unsigned integer with the count of services.
+ */
+uint16_t hogp_device_get_services_count(void);
+
+/**
+ * @brief Get the array of GATT services definitions.
+ */
+const struct ble_gatt_svc_def *const hogp_device_get_services_defs(void);
 
 #endif

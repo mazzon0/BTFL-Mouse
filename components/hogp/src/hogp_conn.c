@@ -1,6 +1,8 @@
 #include "hogp_conn.h"
 #include "host/ble_gap.h"
 #include "services/gap/ble_svc_gap.h"
+#include "host/ble_gatt.h"
+#include "services/gatt/ble_svc_gatt.h"
 #include <string.h>
 
 static hogp_conn_t connection;
@@ -22,7 +24,10 @@ static int send();
 // Prototypes for BLE functions
 void ble_store_config_init(void);
 
-// Public HOGP functions
+// Callbacks from the HID Device
+static int suspend_connection(bool suspended);
+
+// Implementation of public HOGP functions
 
 int hogp_conn_setup(hogp_init_info_t *init_info) {
     int rc = 0;
@@ -47,6 +52,8 @@ void hogp_conn_task(void *params) {
 
     while (1) {
 
+        ESP_LOGI(HID_TAG, "--------------running connection task----------------");
+
         xSemaphoreTake(connection.mutex, portMAX_DELAY);
         
         // check not terminated
@@ -57,6 +64,7 @@ void hogp_conn_task(void *params) {
         }
         
         // check if must terminate
+        ESP_LOGI(HID_TAG, "flags are: 0x%02X", connection.flags);
         if (connection.flags & HOGP_MUST_CLOSE_FLAG) {
             ESP_LOGI(HID_TAG, "Shutting down the bluetooth task");
             xSemaphoreGive(connection.mutex);
@@ -97,14 +105,11 @@ int hogp_conn_shutdown(void) {
         vTaskDelay(1 / portTICK_PERIOD_MS);
     }
 
-    // free all allocated memory
-    if (connection.mice != NULL && connection.n_mice > 0) free(connection.mice);
-    if (connection.keyboards != NULL && connection.n_keyboards) free(connection.keyboards);
-    if (connection.customs != NULL && connection.n_customs) free(connection.customs);
+    hogp_hid_device_shutdown();
 
     // disconnect if connected
     if (connected) {
-        rc = ble_gap_terminate(connection.conn_handle, BLE_ERR_RD_CONN_TERM_PWROFF);    // FIX: this returns an error code
+        rc = ble_gap_terminate(connection.conn_handle, BLE_ERR_RD_CONN_TERM_PWROFF);    // TODO allow user to specify the reason
         if (rc != 0) {
             ESP_LOGE(HID_TAG, "Failed to disconnect, error: %d", rc);
         }
@@ -137,16 +142,33 @@ static int gap_init(hogp_init_info_t *init_info) {
 }
 
 static int gatt_init(hogp_init_info_t *init_info) {
+    int rc = 0;
+
+    ble_svc_gatt_init();
+    ESP_LOGI(HID_TAG, "Initializing GATT");
+
+    const struct ble_gatt_svc_def *const svcs = hogp_device_get_services_defs();
+
+    rc = ble_gatts_count_cfg(svcs);
+    if (rc != 0) {
+        ESP_LOGE(HID_TAG, "Error configuring the GATT services");
+        return rc;
+    }
+    ESP_LOGI(HID_TAG, "GATT services configured");
+
+    rc = ble_gatts_add_svcs(svcs);
+    if (rc != 0) {
+        ESP_LOGE(HID_TAG, "Error adding the GATT services");
+        return rc;
+    }
+    ESP_LOGI(HID_TAG, "GATT services added");
+
     return 0;
 }
 
 static int check_init_info(hogp_init_info_t *init_info) {
     if (init_info == NULL) {
         ESP_LOGE(HID_TAG, "null hogp init info");
-        return -1;
-    }
-    if (init_info->n_mice == 0 && init_info->n_keyboards == 0 && init_info->n_customs == 0) {
-        ESP_LOGE(HID_TAG, "hogp init info contains 0 HID devices");
         return -1;
     }
     if (init_info->update_period_ms == 0) {
@@ -170,65 +192,24 @@ static int init_connection_data(hogp_init_info_t *init_info) {
     int rc = 0;
 
     connection = (hogp_conn_t) {
-        .mice = NULL,
-        .keyboards = NULL,
-        .customs = NULL,
         .mutex = xSemaphoreCreateMutex(),
-        .protocol = HOGP_REPORT,
         .conn_handle = 0,
         .mtu = 23,
         .update_period_ms = init_info->update_period_ms,
         .appearance = init_info->appearance,
-        .n_mice = init_info->n_mice,
-        .n_keyboards = init_info->n_keyboards,
-        .n_customs = init_info->n_customs,
         .flags = 0b00000000
     };
 
     strcpy(connection.device_name, init_info->device_name);
 
-    if (connection.n_mice > 0) connection.mice = malloc(sizeof(hogp_mouse_t) * init_info->n_mice);
-    if (connection.n_keyboards > 0) connection.keyboards = malloc(sizeof(hogp_keyboard_t) * init_info->n_keyboards);
-    if (connection.n_customs > 0) connection.customs = malloc(sizeof(hogp_custom_t) * init_info->n_customs);
-
-    // setup mice
-    if (connection.mice == NULL && connection.n_mice > 0) {
-        ESP_LOGE(HID_TAG, "unable to allocate data for %d mouse services", connection.n_mice);
-        return -1;
-    }
-    for (uint16_t i = 0; i < connection.n_mice; i++) {
-        rc = hogp_mouse_init(&connection.mice[i]);
-        if (rc != 0) {
-            ESP_LOGE(HID_TAG, "unable to inialize mouse service data for mouse at index %d", i);
-            return rc;
-        }
-    }
-
-    // setup keyboards
-    if (connection.keyboards == NULL && connection.n_keyboards > 0) {
-        ESP_LOGE(HID_TAG, "unable to allocate data for %d keyboard services", connection.n_keyboards);
-        return -1;
-    }
-    for (uint16_t i = 0; i < connection.n_keyboards; i++) {
-        rc = hogp_keyboard_init(&connection.keyboards[i]);
-        if (rc != 0) {
-            ESP_LOGE(HID_TAG, "unable to inialize keyboard service data for keyboard at index %d", i);
-            return rc;
-        }
-    }
-
-    // setup customs
-    if (connection.customs == NULL && connection.n_customs > 0) {
-        ESP_LOGE(HID_TAG, "unable to allocate data for %d custom HID services", connection.n_customs);
-        return -1;
-    }
-    for (uint16_t i = 0; i < connection.n_customs; i++) {
-        rc = hogp_custom_init(&connection.customs[i]);
-        if (rc != 0) {
-            ESP_LOGE(HID_TAG, "unable to inialize custom HID service data for custom HID at index %d", i);
-            return rc;
-        }
-    }
+    // setup hid device (data and gatt services)
+    hogp_hid_device_init_info_t device_init_info = {
+        .n_batteries = init_info->n_batteries,
+        .flags = init_info->flags,
+        .conn_handle = connection.conn_handle,
+        .suspend_cb = suspend_connection,
+    };
+    hogp_hid_device_setup(&device_init_info);
 
     return rc;
 }
@@ -237,7 +218,7 @@ static void set_ble_callbacks(void) {
     ble_hs_cfg.reset_cb = ble_stack_reset_callback;
     ble_hs_cfg.sync_cb = ble_stack_sync_callback;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
+    //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; TODO
 
     ble_store_config_init();
 }
@@ -387,19 +368,11 @@ static int start_advertising() {
     struct ble_hs_adv_fields rsp_fields = {0};
     struct ble_gap_adv_params adv_params = {0};
 
-    /*name = ble_svc_gap_device_name();
-    adv_fields.name = (uint8_t *)name;
-    adv_fields.name_len = strlen(name);
-    adv_fields.name_is_complete = 1;*/
     adv_fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    /*adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-    adv_fields.tx_pwr_lvl_is_present = 1;*/
     adv_fields.appearance = connection.appearance;
     adv_fields.appearance_is_present = 1;
-    /*adv_fields.le_role = BLE_GAP_LE_ROLE_PERIPHERAL;
-    adv_fields.le_role_is_present = 1;*/
-    adv_fields.uuids16 = (ble_uuid16_t[]) { BLE_UUID16_INIT(BLE_UUID_HID_SERVICE) };
-    adv_fields.num_uuids16 = 1;
+    adv_fields.uuids16 = hogp_device_get_services_uuids();
+    adv_fields.num_uuids16 = hogp_device_get_services_count();
     adv_fields.uuids16_is_complete = 1;
 
     rc = ble_gap_adv_set_fields(&adv_fields);
@@ -412,11 +385,6 @@ static int start_advertising() {
     rsp_fields.name = (uint8_t *)name;
     rsp_fields.name_len = strlen(name);
     rsp_fields.name_is_complete = 1;
-    /*rsp_fields.device_addr = connection.addr_val;
-    rsp_fields.device_addr_type = connection.own_addr_type;
-    rsp_fields.device_addr_is_present = 1;
-    rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(500);
-    rsp_fields.adv_itvl_is_present = 1;*/
 
     rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
     if (rc != 0) {
@@ -441,5 +409,17 @@ static int start_advertising() {
 }
 
 static int send() {
+    return 0;
+}
+
+static int suspend_connection(bool suspended) {
+    xSemaphoreTake(connection.mutex, portMAX_DELAY);
+    if (suspended) {
+        connection.flags |= HOGP_SUSPENDED_FLAG;
+    } else {
+        connection.flags &= ~HOGP_SUSPENDED_FLAG;
+    }
+    xSemaphoreGive(connection.mutex);
+
     return 0;
 }

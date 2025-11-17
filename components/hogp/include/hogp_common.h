@@ -20,7 +20,6 @@
 #include "nimble/nimble_port_freertos.h"
 
 #define HID_TAG "BLE HID Device"
-#define BLE_UUID_HID_SERVICE 0x1124
 
 #define HOGP_MAX_DEVICE_NAME_CHARACTERS 31
 

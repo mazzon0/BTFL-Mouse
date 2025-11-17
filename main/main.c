@@ -2,12 +2,11 @@
 
 void app_main(void) {
     hogp_init_info_t hogp_init_info = {
-        .n_mice = 1,
-        .n_keyboards = 0,
-        .n_customs = 0,
-        .update_period_ms = 10,
+        .device_name = "BTFL Mouse",
         .appearance = HOGP_APPEARANCE_MOUSE,
-        .device_name = "BTFL Mouse"
+        .update_period_ms = 10,
+        .n_batteries = 1,
+        .flags = 0x01,
     };
 
     hogp_setup(&hogp_init_info);
