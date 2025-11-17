@@ -98,15 +98,8 @@ int hogp_hid_device_shutdown(void) {
         return -1;
     }
 
-    struct ble_gatt_svc_def *svc = device.services;
-    while (svc->uuid != 0) {
-        if (svc->characteristics != NULL) {
-            free(svc->characteristics);
-        }
-        svc++;
-    }
-
     free(device.services);
+    free(device.service_uuids);
     return rc;
 }
 
