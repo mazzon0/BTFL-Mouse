@@ -15,8 +15,11 @@
  */
 typedef struct {
     uint16_t handle;
-    bool subscribed;
+    uint8_t subscribed;
 } hogp_characteristic_t;
+
+#define SUBSCRIBE_NOTIFY    1
+#define SUBSCRIBE_INDICATE  2
 
 /**
  * @brief Data for an HID device.
@@ -45,9 +48,10 @@ typedef struct {
 /**
  * @brief Masks for the flags field of hogp_hid_device_init_into_t.
  */
-#define HOGP_MOUSE_DEVICE       1   /**< 0 if the device should contain no mouse data, 1 otherwise */
-#define HOGP_KEYBOARD_DEVICE    2   /**< 0 if the device should contain no keyboard data, 1 otherwise */
-#define HOGP_CUSTOM_DEVICE      4   /**< 0 if the device should contain no custom hid data, 1 otherwise */
+#define HOGP_MOUSE_DEVICE_FLAG      1   /**< 0 if the device should contain no mouse data, 1 otherwise */
+#define HOGP_KEYBOARD_DEVICE_FLAG   2   /**< 0 if the device should contain no keyboard data, 1 otherwise */
+#define HOGP_CUSTOM_DEVICE_FLAG     4   /**< 0 if the device should contain no custom hid data, 1 otherwise */
+#define HOGP_HID_PROTOCOL_FLAG      8   /**< 0 for Boot protocol, 1 for Report protocol */
 
 /**
  * @brief Init HID device data.
@@ -75,5 +79,10 @@ uint16_t hogp_device_get_services_count(void);
  * @brief Get the array of GATT services definitions.
  */
 const struct ble_gatt_svc_def *const hogp_device_get_services_defs(void);
+
+/**
+ * @brief Handle the subscription to a service
+ */
+uint8_t hogp_device_subscribe_event(struct ble_gap_event *event);
 
 #endif

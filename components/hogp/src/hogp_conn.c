@@ -12,7 +12,7 @@ static int gap_init(hogp_init_info_t *init_info);
 static int gatt_init(hogp_init_info_t *init_info);
 static int check_init_info(hogp_init_info_t *init_info);
 static int init_connection_data(hogp_init_info_t *init_info);
-static void set_ble_callbacks(void);
+static void ble_host_configuration_init(void);
 static void ble_stack_reset_callback(int reason);
 static void ble_stack_sync_callback(void);
 
@@ -29,6 +29,8 @@ static int suspend_connection(bool suspended);
 
 // Implementation of public HOGP functions
 
+static void test_mouse_movement_task(void *pvParameters);
+
 int hogp_conn_setup(hogp_init_info_t *init_info) {
     int rc = 0;
     
@@ -43,7 +45,9 @@ int hogp_conn_setup(hogp_init_info_t *init_info) {
     rc = gatt_init(init_info);
     if (rc != 0) return rc;
 
-    set_ble_callbacks();
+    ble_host_configuration_init();
+
+    xTaskCreate(test_mouse_movement_task, "test_move", 8192, NULL, 5, NULL);
 
     return rc;
 }
@@ -52,7 +56,7 @@ void hogp_conn_task(void *params) {
 
     while (1) {
 
-        ESP_LOGI(HID_TAG, "--------------running connection task----------------");
+        //ESP_LOGI(HID_TAG, "--------------running connection task----------------");
 
         xSemaphoreTake(connection.mutex, portMAX_DELAY);
         
@@ -64,7 +68,7 @@ void hogp_conn_task(void *params) {
         }
         
         // check if must terminate
-        ESP_LOGI(HID_TAG, "flags are: 0x%02X", connection.flags);
+        //ESP_LOGI(HID_TAG, "flags are: 0x%02X", connection.flags);
         if (connection.flags & HOGP_MUST_CLOSE_FLAG) {
             ESP_LOGI(HID_TAG, "Shutting down the bluetooth task");
             xSemaphoreGive(connection.mutex);
@@ -214,11 +218,16 @@ static int init_connection_data(hogp_init_info_t *init_info) {
     return rc;
 }
 
-static void set_ble_callbacks(void) {
+static void ble_host_configuration_init(void) {
     ble_hs_cfg.reset_cb = ble_stack_reset_callback;
     ble_hs_cfg.sync_cb = ble_stack_sync_callback;
+    //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; // Uncommented and using standard name
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-    //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; TODO
+
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO; // or BLE_SM_IO_CAP_DISPLAY_YESNO for more security
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 1;
+    ble_hs_cfg.sm_sc = 1;
 
     ble_store_config_init();
 }
@@ -346,7 +355,7 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
                  event->subscribe.cur_notify, event->subscribe.prev_indicate,
                  event->subscribe.cur_indicate);
 
-        // TODO gatt_svr_subscribe_cb(event);
+        hogp_device_subscribe_event(event);
         return rc;
 
     case BLE_GAP_EVENT_MTU:
@@ -422,4 +431,53 @@ static int suspend_connection(bool suspended) {
     xSemaphoreGive(connection.mutex);
 
     return 0;
+}
+
+// test functions
+
+extern hogp_hid_device_t device;
+
+
+static void test_mouse_movement_task(void *pvParameters) {
+    ESP_LOGI(HID_TAG, "Test Mouse Task Started");
+
+    while (1) {
+        // Wait for 2 seconds (non-blocking delay)
+        vTaskDelay(pdMS_TO_TICKS(2000));
+
+        ESP_LOGI(HID_TAG, "trying to move");
+        
+        // Only send if we are actually connected
+        if (connection.flags & HOGP_CONNECTED_FLAG && device.characteristics[4].subscribed & SUBSCRIBE_NOTIFY) {
+            xSemaphoreTake(connection.mutex, portMAX_DELAY);    // TODO add max value
+            ESP_LOGI(HID_TAG, "connection ok: connection handle = %d", device.characteristics[4].handle);
+            ESP_LOGI(HID_TAG, "connection handle: %d", connection.conn_handle);
+            
+            // Move 20 units right, 20 units down
+            uint8_t report[4] = { 0x00, 20, 20, 0 };
+
+            struct os_mbuf *om = ble_hs_mbuf_from_flat(report, sizeof(report));
+
+            ESP_LOGI(HID_TAG, "allocation returned: %d", om);
+            
+            // Check for allocation failure
+            if (om == NULL) {
+                ESP_LOGE(HID_TAG, "Error: No memory for mbuf!");
+                xSemaphoreGive(connection.mutex);
+                continue;
+            }
+            xSemaphoreGive(connection.mutex);
+            
+            int rc = ble_gatts_notify_custom(connection.conn_handle, device.characteristics[4].handle, om);
+            
+            if (rc == 0) {
+                ESP_LOGI(HID_TAG, "Test: Sent Mouse Movement");
+            } else {
+                ESP_LOGW(HID_TAG, "Test: Failed to send (Error %d)", rc);
+                os_mbuf_free_chain(om);
+            }
+        }
+    }
+    
+    vTaskDelete(NULL);
 }
