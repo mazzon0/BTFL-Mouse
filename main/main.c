@@ -1,19 +1,20 @@
-#include "hogp.h"
+#include <stdio.h>
 #include "tmx.h"
 
-void app_main(void) {
-    hogp_init_info_t hogp_init_info = {
-        .n_mice = 1,
-        .n_keyboards = 0,
-        .n_customs = 0,
-        .update_period_ms = 10,
-        .appearance = HOGP_APPEARANCE_MOUSE,
-        .device_name = "BTFL Mouse"
-    };
+void app_main(void)
+{
+    tmx_init();
 
-    hogp_setup(&hogp_init_info);
+    uint32_t values[12];
 
-    vTaskDelay(100000 / portTICK_PERIOD_MS);
+    while (1) {
+        tmx_read_raw(values, 12);
 
-    hogp_shutdown();
+        for (int i = 0; i < 12; i++) {
+            printf("%" PRIu32 ",", values[i]);
+        }
+        printf("\n");
+
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
 }
