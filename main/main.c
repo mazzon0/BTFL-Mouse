@@ -1,4 +1,5 @@
 #include "hogp.h"
+#include "tmx.h"
 
 void app_main(void) {
     hogp_init_info_t hogp_init_info = {
