@@ -1,18 +1,43 @@
-#include "hogp.h"
+
+
+// pmw3389---------------------------------
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "pmw3389.h"
+
+static const char *TAG = "MAIN";
+
+// Pin configuartion for ESP32-S3
+#define PIN_MISO    GPIO_NUM_37
+#define PIN_MOSI    GPIO_NUM_35
+#define PIN_SCLK    GPIO_NUM_36
+#define PIN_CS      GPIO_NUM_45
+#define PIN_MOTION  GPIO_NUM_48
+
+// SPI clock speed (2MHz)
+#define SPI_CLOCK_SPEED_HZ  2000000
+
+// Default CPI (Counts Per Inch) setting 
+#define DEFAULT_CPI  1600
+
 
 void app_main(void) {
-    hogp_init_info_t hogp_init_info = {
-        .n_mice = 1,
-        .n_keyboards = 0,
-        .n_customs = 0,
-        .update_period_ms = 10,
-        .appearance = HOGP_APPEARANCE_MOUSE,
-        .device_name = "BTFL Mouse"
+     //configuration sensor hardware settings
+    pmw3389_config_t config = {
+        .spi_host = SPI2_HOST,
+        .pin_miso = PIN_MISO,
+        .pin_mosi = PIN_MOSI,
+        .pin_sclk = PIN_SCLK,
+        .pin_cs = PIN_CS,
+        .pin_motion = PIN_MOTION,
+        .spi_clock_speed_hz = SPI_CLOCK_SPEED_HZ,
     };
 
-    hogp_setup(&hogp_init_info);
-
-    vTaskDelay(100000 / portTICK_PERIOD_MS);
-
-    hogp_shutdown();
+    
+    // Run motion test (this function runs indefinitely)
+    pmw3389_test_motion(&config, DEFAULT_CPI);
+    
 }
