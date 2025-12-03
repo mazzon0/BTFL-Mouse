@@ -8,7 +8,7 @@
  * 
  * @author Ilaria
  * @date 2025-12-03
- * @version 1.0
+ * @version 2.0
  */
 
 #ifndef PMW3389_H
@@ -377,6 +377,50 @@ esp_err_t pmw3389_deinit(pmw3389_handle_t handle);
  * @endcode
  */
 esp_err_t pmw3389_dump_registers(pmw3389_handle_t handle);
+
+
+/**
+ * @brief Run a complete motion test with statistics
+ * 
+ * This is a comprehensive test function that initializes the sensor,
+ * configures it, and enters a continuous loop reading and displaying
+ * motion data with periodic statistics.
+ * 
+ * @param config Pointer to configuration structure with hardware settings
+ * @param cpi Desired CPI (Counts Per Inch) resolution (50-16000, multiple of 50)
+ * 
+ * @return 
+ *     - ESP_OK on success (never returns in normal operation)
+ *     - ESP_ERR_INVALID_ARG if config is NULL or CPI is out of range
+ *     - Other ESP_ERR codes for initialization or configuration errors
+ * 
+ * @details
+ * The function performs:
+ * 1. Sensor initialization with provided configuration
+ * 2. Sensor configuration upload (native mode)
+ * 3. CPI setting
+ * 4. Infinite loop reading motion data every 100ms
+ * 5. Display motion events (ΔX, ΔY, SQUAL, motion/lift flags)
+ * 6. Display statistics every 50 reads (total reads, motion %, cumulative displacement)
+ * 
+ * This function is designed for testing and demonstration purposes.
+ * It runs indefinitely until the program is terminated.
+ * 
+ * @usage
+ * @code
+ * pmw3389_config_t config = {
+ *     .spi_host = SPI2_HOST,
+ *     .pin_miso = GPIO_NUM_13,
+ *     .pin_mosi = GPIO_NUM_11,
+ *     .pin_sclk = GPIO_NUM_12,
+ *     .pin_cs = GPIO_NUM_10,
+ *     .pin_motion = GPIO_NUM_9,
+ *     .spi_clock_speed_hz = 2000000
+ * };
+ * pmw3389_test_motion(&config, 1600);
+ * @endcode
+ */
+esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi);
 
 #ifdef __cplusplus
 }

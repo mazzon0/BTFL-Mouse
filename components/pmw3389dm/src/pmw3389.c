@@ -8,7 +8,7 @@
  * 
  * @author Ilaria
  * @date 2025-12-03
- * @version 1.0
+ * @version 2.0
  */
 
 #include "pmw3389.h"
@@ -486,4 +486,88 @@ esp_err_t pmw3389_dump_registers(pmw3389_handle_t handle) {
     ESP_LOGI(TAG, "==============================");
     
     return ESP_OK;
+}
+
+esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
+    ESP_LOGI(TAG, "=== PMW3389 Driver Test ===");
+    ESP_LOGI(TAG, "ESP-IDF Version: %s", esp_get_idf_version());
+
+    //sensor initialization 
+    pmw3389_handle_t sensor = NULL;
+    esp_err_t ret = pmw3389_init(&config, &sensor);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Sensor initialization failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Check SPI connections, power supply (3.3V), and pins");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Sensor initialized successfully!");
+
+    ESP_LOGI(TAG, "Loading SROM firmware...");
+    ret = pmw3389_upload(sensor);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Sensor configuration failed");
+        return;
+    }
+
+    //set CPI - tracking resolution
+    uint16_t cpi = 1600;
+    ret = pmw3389_set_cpi(sensor, cpi);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "CPI setting failed: %s", esp_err_to_name(ret));
+    }
+
+    ESP_LOGI(TAG, "\n=== MOTION READING START ===");
+    ESP_LOGI(TAG, "Move the sensor to see ΔX and ΔY values");
+    ESP_LOGI(TAG, "Press Ctrl+C to terminate\n");
+
+    //statics tracking variables
+    uint32_t read_count = 0;
+    uint32_t motion_count = 0;
+    int32_t total_x = 0;
+    int32_t total_y = 0;
+
+    while (1) {
+        pmw3389_motion_data_t motion;
+        
+        //read motion data from sensor
+        ret = pmw3389_read_motion(sensor, &motion);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        read_count++;
+
+        //print only if movement is detected
+        if (motion.motion_detected || motion.delta_x != 0 || motion.delta_y != 0) {
+            motion_count++;
+            total_x += motion.delta_x;
+            total_y += motion.delta_y;
+
+            ESP_LOGI(TAG, "ΔX: %6d | ΔY: %6d | SQUAL: %3d | Motion: %s%s",
+                     motion.delta_x,
+                     motion.delta_y,
+                     motion.squal,
+                     motion.motion_detected ? "YES" : "NO",
+                     motion.lift_detected ? " [LIFT]" : "");
+        }
+
+        //statistics every 5s (5oreads)
+        if (read_count % 50 == 0) {
+            ESP_LOGI(TAG, "--- Statistics ---");
+            ESP_LOGI(TAG, "Reads: %lu | Motions: %lu (%.1f%%)",
+                     read_count, motion_count,
+                     (float)motion_count * 100.0f / read_count);
+            ESP_LOGI(TAG, "Total displacement - X: %ld | Y: %ld\n",
+                     total_x, total_y);
+        }
+
+        // delay between reads - 100ms (10Hz)
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    //cleanup
+    pmw3389_deinit(sensor);
 }
