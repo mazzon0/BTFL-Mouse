@@ -1,7 +1,6 @@
 #include "tmx_driver.h"
 
 static const char *TAG = "tmx_driver";
-static uint32_t tmx_raw_values[TMX_NUM_TOUCH_PADS];
 
 esp_err_t tmx_driver_init(void)
 {
@@ -27,14 +26,9 @@ esp_err_t tmx_driver_init(void)
     return ESP_OK;
 }
 
-void tmx_driver_read_raw(void)
+void tmx_driver_read_raw(uint32_t* dest)
 {
     for (int i = 0; i < TMX_NUM_TOUCH_PADS; i++) {
-        touch_pad_read_raw_data(tmx_touch_pads[i], &tmx_raw_values[i]);
+        touch_pad_read_raw_data(tmx_touch_pads[i], &dest[i]);
     }
-}
-
-uint32_t* tmx_driver_get_raw_data(void)
-{
-    return tmx_raw_values;
 }
