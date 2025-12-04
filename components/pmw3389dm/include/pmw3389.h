@@ -7,7 +7,7 @@
  * initialization, motion reading, CPI configuration, and register access.
  * 
  * @author Ilaria
- * @date 2025-12-03
+ * @date 2025-12-04
  * @version 2.0
  */
 
@@ -131,6 +131,7 @@ typedef struct {
  */
 
 typedef struct pmw3389_dev_t* pmw3389_handle_t;
+
 
 /**
  * @brief Initialize the PMW3389 sensor
@@ -409,18 +410,78 @@ esp_err_t pmw3389_dump_registers(pmw3389_handle_t handle);
  * @usage
  * @code
  * pmw3389_config_t config = {
- *     .spi_host = SPI2_HOST,
- *     .pin_miso = GPIO_NUM_13,
- *     .pin_mosi = GPIO_NUM_11,
- *     .pin_sclk = GPIO_NUM_12,
- *     .pin_cs = GPIO_NUM_10,
- *     .pin_motion = GPIO_NUM_9,
- *     .spi_clock_speed_hz = 2000000
- * };
- * pmw3389_test_motion(&config, 1600);
+ *       .spi_host = SPI2_HOST,
+ *       .pin_miso = PIN_MISO,
+ *       .pin_mosi = PIN_MOSI,
+ *       .pin_sclk = PIN_SCLK,
+ *       .pin_cs = PIN_CS,
+ *       .pin_motion = PIN_MOTION,
+ *       .spi_clock_speed_hz = SPI_CLOCK_SPEED_HZ,
+ *   };
+ * pmw3389_test_motion(&config, 3200);
  * @endcode
  */
 esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi);
+
+
+
+/**
+ * @brief Motion interrupt test for PMW3389 sensor
+ * 
+ * This function performs a continuous test of the PMW3389 sensor using 
+ * hardware interrupts to detect motion. It monitors and logs detailed 
+ * statistics about detected movement, including delta X/Y, traveled 
+ * distances, and signal quality.
+ * 
+ * @param[in] config Pointer to the PMW3389 sensor configuration structure.
+ *                   Must not be NULL.
+ * @param[in] cpi    CPI (Counts Per Inch) value to set on the sensor.
+ *                   Determines the motion detection sensitivity.
+ * 
+ * @return void      The function does not return (infinite loop) or terminates 
+ *                   in case of initialization error.
+ * 
+ * @details
+ * The function performs the following operations:
+ * - Initializes the PMW3389 sensor with the provided configuration
+ * - Uploads the sensor configuration
+ * - Sets the specified CPI value
+ * - Enters an infinite loop that:
+ *   - Waits for interrupt notifications from the sensor (5 second timeout)
+ *   - Reads motion data when an interrupt is detected
+ *   - Calculates and accumulates statistics (total movements, distances, false wake-ups)
+ *   - Prints detailed statistics after 5 seconds of inactivity
+ * 
+ * Monitored statistics:
+ * - Total number of detected movements
+ * - Total number of received interrupts
+ * - False wake-up count (interrupts without actual motion)
+ * - Cumulative delta X and Y
+ * - Traveled distances in mm (X axis, Y axis, and total)
+ * - Average movements per minute
+ * - Signal quality (SQUAL) and lift detection
+ * 
+ * @note
+ * - The function uses g_motion_task_handle for communication with the ISR
+ * - Requires the sensor interrupt to be properly configured
+ * - The function never terminates under normal conditions (infinite loop)
+ * - In case of initialization error, the function returns immediately
+ * 
+ * @usage
+ * @code
+ * pmw3389_config_t config = {
+ *     .spi_host = SPI2_HOST,
+ *     .cs_io = GPIO_NUM_5,
+ *     .motion_io = GPIO_NUM_4
+ * };
+ * 
+ * pmw3389_test_motion_interrupt(&config, 1600); // Test with 1600 CPI
+ * @endcode
+ */
+void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi);
+
+
+
 
 #ifdef __cplusplus
 }

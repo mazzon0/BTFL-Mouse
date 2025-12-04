@@ -1,6 +1,16 @@
+/**
+ * @file main.c
+ * @brief PMW3389 driver test program - simplified entry point
+ * 
+ * This is a simplified main application that demonstrates the usage of
+ * the PMW3389 optical sensor driver through a single test function call.
+ * All testing logic is encapsulated in pmw3389_test_motion().
+ * 
+ * @author Ilaria
+ * @date 2025-12-04
+ * @version 2.0
+ */
 
-
-// pmw3389---------------------------------
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -15,13 +25,21 @@ static const char *TAG = "MAIN";
 #define PIN_MOSI    GPIO_NUM_35
 #define PIN_SCLK    GPIO_NUM_36
 #define PIN_CS      GPIO_NUM_45
-#define PIN_MOTION  GPIO_NUM_48
+#define PIN_MOTION  GPIO_NUM_18
 
 // SPI clock speed (2MHz)
 #define SPI_CLOCK_SPEED_HZ  2000000
 
 // Default CPI (Counts Per Inch) setting 
-#define DEFAULT_CPI  1600
+#define DEFAULT_CPI  3200
+
+/**
+ * @brief Main application entry point
+ * 
+ * Configures the PMW3389 sensor hardware parameters and starts
+ * the motion test function that handles all initialization,
+ * configuration, and continuous motion reading.
+ */
 
 
 void app_main(void) {
