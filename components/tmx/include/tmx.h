@@ -11,7 +11,7 @@ esp_err_t tmx_init(void);
 /**
  * @brief Read raw touchpad values into the provided destination array.
  */
-esp_err_t tmx_read_raw(uint32_t* dest, int len);
+esp_err_t tmx_read_raw();
 
 
 #endif

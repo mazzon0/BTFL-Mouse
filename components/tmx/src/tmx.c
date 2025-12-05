@@ -1,16 +1,13 @@
 #include "tmx.h"
-#include "tmx_driver.h"
-
+#include "tmx_processing.h"
 esp_err_t tmx_init(void)
 {
-    return tmx_driver_init();
+    return tmx_processing_init();
 }
 
-esp_err_t tmx_read_raw(uint32_t* dest, int len)
+esp_err_t tmx_read_raw()
 {
-    if (len < TMX_NUM_TOUCH_PADS) return ESP_ERR_INVALID_SIZE;
-
-    tmx_driver_read_raw(dest);
+    tmx_processing_print();
 
     return ESP_OK;
 }

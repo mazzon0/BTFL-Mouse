@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 /**
  * @brief Data structure for a circular buffer.
@@ -28,7 +29,7 @@ void cb_init(CircularBuffer_t* cb, void* buffer, size_t item_size, size_t depth)
 /**
  * @brief Adds an item to the circular buffer.
  */
-void cb_push(CircularBuffer_t* cb, const void* item);
+int cb_push(CircularBuffer_t* cb, const void* item);
 
 /**
  * @brief Reads an element from the buffer at a specified temporal offset.
