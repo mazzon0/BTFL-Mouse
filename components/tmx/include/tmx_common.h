@@ -8,8 +8,8 @@
 #include "driver/touch_pad.h"
 #include "esp_log.h"
 
-#define TMX_M 3
-#define TMX_N 4
+#define TMX_M 4
+#define TMX_N 3
 #define TMX_NUM_TOUCH_PADS (TMX_M * TMX_N)
 
 static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {

@@ -5,6 +5,7 @@ static uint32_t s_filtered_data[TMX_M][TMX_N]; //first filetring using EMWA, fas
 static uint32_t s_adaptive_baseline[TMX_M][TMX_N];//low variation for adaptive baseline
 static uint32_t s_delta_signal[TMX_M][TMX_N]; //delta signal = filtered - baseline
 static uint32_t s_oversampled_delta[OVERSAMPLED_M][OVERSAMPLED_N]; //oversampled delta signal for blob detection
+static bool visited[OVERSAMPLED_M][OVERSAMPLED_N];
 static tmx_touch_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
 static CircularBuffer_t s_frame_history;
 
@@ -32,11 +33,11 @@ void tmx_processing_filtering(void){
     for(int i = 0; i < TMX_M; i++){
         for(int j = 0; j < TMX_N; j++){
             //First stage: Fast EMWA filtering
-            const float alpha_fast = 0.8f;
+            const float alpha_fast = 0.5f;
             s_filtered_data[i][j] = (uint32_t)(alpha_fast * s_raw_data[i][j] + (1 - alpha_fast) * s_filtered_data[i][j]);
 
             //Second stage: Adaptive baseline with slower EMWA
-            const float alpha_slow = 0.1f;
+            const float alpha_slow = 0.00f;
             s_adaptive_baseline[i][j] = (uint32_t)(alpha_slow * s_filtered_data[i][j] + (1 - alpha_slow) * s_adaptive_baseline[i][j]);
 
             //Compute delta signal
@@ -100,4 +101,25 @@ void tmx_processing_print(void){
         printf("\n");
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
+}
+
+void tmx_processing_blob_detection(void){
+    memset(visited, 0, sizeof(visited));
+    memset(s_current_frame, 0, sizeof(s_current_frame));
+    int touch_count = 0;
+    for(int i = 0; i < OVERSAMPLED_M; i++){
+        for(int j = 0; j < OVERSAMPLED_N; j++){
+            if(s_oversampled_delta[i][j] > TMX_DELTA_THRESHOLD && !visited[i][j]){
+                tmx_processing_flood_fill(i, j, &visited, &s_current_frame[touch_count]);
+                touch_count++;
+                if(touch_count >= MAX_NUM_TOUCHES){
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void tmx_processing_flood_fill(int i; int j; bool visited[OVERSAMPLED_M][OVERSAMPLED_N]; tmx_touch_t* touch){
+    //TO BE IMPLEMENTED
 }

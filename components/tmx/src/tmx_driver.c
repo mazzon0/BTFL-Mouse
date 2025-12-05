@@ -15,7 +15,7 @@ esp_err_t tmx_driver_init(void)
         TOUCH_LVOLT_0V5, 
         TOUCH_HVOLT_ATTEN_1V
     ));
-    ESP_ERROR_CHECK(touch_pad_set_charge_discharge_times(0x1000));
+    ESP_ERROR_CHECK(touch_pad_set_charge_discharge_times(0x0400));
 
     ESP_ERROR_CHECK(touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER));
     ESP_ERROR_CHECK(touch_pad_fsm_start());
