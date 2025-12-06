@@ -41,7 +41,6 @@ int cb_read_at_offset(CircularBuffer_t* cb, int offset, void* data_out) {
     //Get memory address
     void* read_ptr = cb_get_ptr_at(cb, read_index);
 
-    //Copy data: use memcpy for generic type
     memcpy(data_out, read_ptr, cb->item_size);
 
     return 0;

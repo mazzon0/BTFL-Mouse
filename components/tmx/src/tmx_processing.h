@@ -14,13 +14,13 @@
 #define OVERSAMPLED_M (TMX_M * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 #define OVERSAMPLED_N (TMX_N * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 
-enum state_t {
+typedef enum{
     UP_IDLE,
     DOWN_PENDING,
     CLICK_DETECTED,
     SWIPE_DETECTED,
     RELEASE_PENDING
-};
+} state_t;
 
 /**
  * @brief Data structure for a detected blob.
@@ -38,7 +38,7 @@ typedef struct {
  */
 typedef struct {
     int ID;
-    enum state_t state;
+    state_t state;
     uint64_t down_timestamp;
     float start_x, start_y;
     float current_x, current_y;
