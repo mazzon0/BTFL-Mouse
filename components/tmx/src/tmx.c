@@ -5,7 +5,7 @@ esp_err_t tmx_init(void)
     return tmx_processing_init();
 }
 
-esp_err_t tmx_read_raw()
+esp_err_t tmx_print(void)
 {
     tmx_processing_print();
 

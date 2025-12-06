@@ -88,38 +88,85 @@ void tmx_processing_oversampling(void){
 }
 
 void tmx_processing_print(void){
-    while(1){
-        tmx_processing_raw_read();
-        tmx_processing_filtering();
-        tmx_processing_oversampling();
+    
+    // exec pipeline
+    tmx_processing_raw_read();
+    tmx_processing_filtering();
+    tmx_processing_oversampling();
+    tmx_processing_blob_detection();
 
-        for(int i = 0; i < OVERSAMPLED_M; i++){
-            for(int j = 0; j < OVERSAMPLED_N; j++){
-                printf("%" PRIu32 ",", s_oversampled_delta[i][j]);
-            }
+    // print results in CSV format
+    for(int k = 0; k < MAX_NUM_TOUCHES; k++){
+        if(s_current_frame[k].is_active){
+            tmx_touch_t *touch = &s_current_frame[k];
+            
+            // Stampa CSV: Index,ID,X,Y,Area
+            printf("%d,%d,%.2f,%.2f,%" PRIu32 "\n",
+                k,                         // Slot Index (0 o 1)
+                touch->ID,        // ID di tracciamento
+                touch->centroid_x,         // Centroide X (virtuale)
+                touch->centroid_y,         // Centroide Y (virtuale)
+                touch->area                // Area (Intensità)
+            );
         }
-        printf("\n");
-        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
+    
+    // Frame marker
+    printf("FRAME_END\n");
 }
 
 void tmx_processing_blob_detection(void){
     memset(visited, 0, sizeof(visited));
     memset(s_current_frame, 0, sizeof(s_current_frame));
     int touch_count = 0;
+
     for(int i = 0; i < OVERSAMPLED_M; i++){
         for(int j = 0; j < OVERSAMPLED_N; j++){
-            if(s_oversampled_delta[i][j] > TMX_DELTA_THRESHOLD && !visited[i][j]){
-                tmx_processing_flood_fill(i, j, &visited, &s_current_frame[touch_count]);
+
+            if(s_oversampled_delta[i][j] > TMX_DELTA_THRESHOLD && !visited[i][j] && touch_count < MAX_NUM_TOUCHES){
+
+                tmx_processing_flood_fill(i, j, &s_current_frame[touch_count]);
+                s_current_frame[touch_count].is_active = true;
                 touch_count++;
-                if(touch_count >= MAX_NUM_TOUCHES){
-                    return;
-                }
+
             }
+        }
+    }
+
+    for(int t = 0; t < touch_count; t++){
+        if(s_current_frame[t].is_active){
+            //normalize centroid
+            s_current_frame[t].centroid_x /= (float)s_current_frame[t].area;
+            s_current_frame[t].centroid_y /= (float)s_current_frame[t].area;
         }
     }
 }
 
-void tmx_processing_flood_fill(int i; int j; bool visited[OVERSAMPLED_M][OVERSAMPLED_N]; tmx_touch_t* touch){
-    //TO BE IMPLEMENTED
+void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch){
+    if(r < 0 || r >= OVERSAMPLED_M || c < 0 || c >= OVERSAMPLED_N){
+        return;
+    }
+
+    if(visited[r][c]){
+        return;
+    }
+
+    if(s_oversampled_delta[r][c] < TMX_DELTA_THRESHOLD){
+        return;
+    }
+
+    visited[r][c] = true;
+    touch->area += s_oversampled_delta[r][c];
+    touch->centroid_x += (float)c * (float)s_oversampled_delta[r][c];
+    touch->centroid_y += (float)r * (float)s_oversampled_delta[r][c];
+
+    //kernel 8-neighbors
+    static const int dr[] = {-1,-1,-1,0,0,1,1,1};
+    static const int dc[] = {-1,0,1,-1,1,-1,0,1};
+
+    for(int k=0; k<8; k++){
+        tmx_processing_flood_fill(r + dr[k], c + dc[k], touch);
+    }
+
+
 }

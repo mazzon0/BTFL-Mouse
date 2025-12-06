@@ -4,5 +4,11 @@
 void app_main(void)
 {
     tmx_init();
-    tmx_read_raw();
+    while (1)
+    {
+        tmx_print();
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Add a delay to avoid flooding the output
+    }
+    
+    
 }

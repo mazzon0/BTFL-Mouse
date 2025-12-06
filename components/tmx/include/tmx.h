@@ -9,9 +9,9 @@
 esp_err_t tmx_init(void);
 
 /**
- * @brief Read raw touchpad values into the provided destination array.
+ * @brief Print processed touch data.
  */
-esp_err_t tmx_read_raw();
+esp_err_t tmx_print(void);
 
 
 #endif
