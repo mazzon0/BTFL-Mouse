@@ -46,3 +46,8 @@ int cb_read_at_offset(CircularBuffer_t* cb, int offset, void* data_out) {
 
     return 0;
 }
+
+uint64_t get_current_time_ms(void) {
+    uint64_t ms = esp_timer_get_time() / 1000ULL;
+    return ms;
+}

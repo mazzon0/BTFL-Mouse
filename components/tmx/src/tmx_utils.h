@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "esp_timer.h"
 
 /**
  * @brief Data structure for a circular buffer.
@@ -35,6 +36,11 @@ int cb_push(CircularBuffer_t* cb, const void* item);
  * @brief Reads an element from the buffer at a specified temporal offset.
  */
 int cb_read_at_offset(CircularBuffer_t* cb, int offset, void* data_out);
+
+/**
+ * @brief Get the current time in milliseconds.
+ */
+uint64_t get_current_time_ms(void);
 
 
 

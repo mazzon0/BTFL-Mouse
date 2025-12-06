@@ -10,20 +10,40 @@
 #define OVERSAMPLING_FACTOR 3
 #define TMX_DELTA_THRESHOLD 20000
 #define REJECTION_AREA_THRESHOLD 1000000
+#define MAX_DISTANCE_SQUARED 40000.0f // 200 pixels squared
 #define OVERSAMPLED_M (TMX_M * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 #define OVERSAMPLED_N (TMX_N * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
+
+enum state_t {
+    UP_IDLE,
+    DOWN_PENDING,
+    CLICK_DETECTED,
+    SWIPE_DETECTED,
+    RELEASE_PENDING
+};
 
 /**
  * @brief Data structure for a detected blob.
  */
 typedef struct {
     bool is_active;
-    int ID;
     float centroid_x;
     float centroid_y;
     uint32_t delta_peak;
     uint32_t area;
 } tmx_touch_t;
+
+/**
+ * @brief Data structure for touch tracking.
+ */
+typedef struct {
+    int ID;
+    enum state_t state;
+    uint64_t down_timestamp;
+    float start_x, start_y;
+    float current_x, current_y;
+    tmx_touch_t last_blob;
+} tmx_tracker_t;
 
 /**
  * @brief Initialize the TMX processing module.
@@ -59,5 +79,10 @@ void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch);
  * @brief Apply finger rejection filtering to the current frame.
  */
 void finger_rejection_filtering(void);
+
+/**
+ * @brief Associate detected blobs with existing trackersuusing nearest neighbor criteria.
+ */
+void tmx_processing_associate_blobs(uint64_t current_time_ms);
 
 #endif // TMX_PROCESSING_H

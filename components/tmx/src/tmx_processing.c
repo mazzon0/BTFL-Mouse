@@ -2,12 +2,14 @@
 
 static uint32_t s_raw_data[TMX_M][TMX_N]; //Raw touch data
 static uint32_t s_filtered_data[TMX_M][TMX_N]; //first filetring using EMWA, fast variation
-static uint32_t s_adaptive_baseline[TMX_M][TMX_N];//low variation for adaptive baseline
+static uint32_t s_adaptive_baseline[TMX_M][TMX_N]; //low variation for adaptive baseline
 static uint32_t s_delta_signal[TMX_M][TMX_N]; //delta signal = filtered - baseline
 static uint32_t s_oversampled_delta[OVERSAMPLED_M][OVERSAMPLED_N]; //oversampled delta signal for blob detection
-static bool visited[OVERSAMPLED_M][OVERSAMPLED_N];
+static bool visited[OVERSAMPLED_M][OVERSAMPLED_N]; //visited map for flood-fill algorithm
 static tmx_touch_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
 static CircularBuffer_t s_frame_history;
+static tmx_tracker_t s_touch_trackers[MAX_NUM_TOUCHES]; //global blob trackers among frames
+static int s_next_tracker_id = 1;
 
 void tmx_processing_raw_read(void)
 {
@@ -26,6 +28,7 @@ esp_err_t tmx_processing_init(void)
     memcpy(s_filtered_data, s_raw_data, sizeof(s_raw_data));
     memcpy(s_adaptive_baseline, s_raw_data, sizeof(s_raw_data));
     memset(s_delta_signal, 0, sizeof(s_raw_data));
+    memset(s_touch_trackers, 0, sizeof(s_touch_trackers));
     return ESP_OK;
 }
 
@@ -95,6 +98,7 @@ void tmx_processing_print(void){
     tmx_processing_oversampling();
     tmx_processing_blob_detection();
     finger_rejection_filtering();
+    cb_push(&s_frame_history, s_current_frame);
 
     // print results in CSV format
     for(int k = 0; k < MAX_NUM_TOUCHES; k++){
@@ -102,9 +106,8 @@ void tmx_processing_print(void){
             tmx_touch_t *touch = &s_current_frame[k];
             
             // Stampa CSV: Index,ID,X,Y,Area
-            printf("%d,%d,%.2f,%.2f,%" PRIu32 "\n",
+            printf("%d,%.2f,%.2f,%" PRIu32 "\n",
                 k,                         // Slot Index (0 o 1)
-                touch->ID,        // ID di tracciamento
                 touch->centroid_x,         // Centroide X (virtuale)
                 touch->centroid_y,         // Centroide Y (virtuale)
                 touch->area                // Area (Intensità)
@@ -178,4 +181,100 @@ void finger_rejection_filtering(void){
             }
         }
     }
+}
+
+static void tmx_reset_tracker_flags(void) {
+    for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
+        if (s_touch_trackers[j].state != UP_IDLE) {
+            s_touch_trackers[j].last_blob.is_active = false;
+        }
+    }
+}
+
+static void tmx_match_existing_trackers(bool tracker_assigned[]) {
+
+    for (int i = 0; i < MAX_NUM_TOUCHES; i++) {
+        if (!s_current_frame[i].is_active)
+            continue;
+
+        int best_tracker_index = -1;
+        float min_dist_sq = MAX_DISTANCE_SQUARED;
+
+        for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
+
+            if (s_touch_trackers[j].state != UP_IDLE && !tracker_assigned[j]) {
+                float dx = s_current_frame[i].centroid_x - s_touch_trackers[j].current_x;
+                float dy = s_current_frame[i].centroid_y - s_touch_trackers[j].current_y;
+                float d2 = dx * dx + dy * dy;
+
+                if (d2 < min_dist_sq) {
+                    min_dist_sq = d2;
+                    best_tracker_index = j;
+                }
+            }
+        }
+
+        if (best_tracker_index != -1) {
+            tmx_tracker_t *t = &s_touch_trackers[best_tracker_index];
+
+            t->current_x = s_current_frame[i].centroid_x;
+            t->current_y = s_current_frame[i].centroid_y;
+            t->last_blob = s_current_frame[i];
+            tracker_assigned[best_tracker_index] = true;
+        }
+    }
+}
+
+static void tmx_assign_new_trackers(uint64_t current_time_ms, bool tracker_assigned[]) {
+
+    for (int i = 0; i < MAX_NUM_TOUCHES; i++) {
+        if (!s_current_frame[i].is_active)
+            continue;
+
+        bool matched = false;
+
+        for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
+            if (s_touch_trackers[j].state != UP_IDLE &&
+                tracker_assigned[j] &&
+                s_touch_trackers[j].last_blob.centroid_x == s_current_frame[i].centroid_x &&
+                s_touch_trackers[j].last_blob.centroid_y == s_current_frame[i].centroid_y) {
+                matched = true;
+                break;
+            }
+        }
+
+        if (!matched) {
+            for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
+                if (s_touch_trackers[j].state == UP_IDLE) {
+                    tmx_tracker_t *t = &s_touch_trackers[j];
+
+                    t->ID = s_next_tracker_id++;
+                    t->state = DOWN_PENDING;
+                    t->down_timestamp = current_time_ms;
+
+                    t->start_x = t->current_x = s_current_frame[i].centroid_x;
+                    t->start_y = t->current_y = s_current_frame[i].centroid_y;
+
+                    t->last_blob = s_current_frame[i];
+                    tracker_assigned[j] = true;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void tmx_processing_associate_blobs(uint64_t current_time_ms) {
+
+    bool tracker_assigned[MAX_NUM_TOUCHES] = { false };
+
+    tmx_reset_tracker_flags();
+
+    tmx_match_existing_trackers(tracker_assigned);
+
+    tmx_assign_new_trackers(current_time_ms, tracker_assigned);
+}
+
+void tmx_processing_temporal_analysis(void){
+
 }
