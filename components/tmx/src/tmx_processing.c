@@ -94,6 +94,7 @@ void tmx_processing_print(void){
     tmx_processing_filtering();
     tmx_processing_oversampling();
     tmx_processing_blob_detection();
+    finger_rejection_filtering();
 
     // print results in CSV format
     for(int k = 0; k < MAX_NUM_TOUCHES; k++){
@@ -167,6 +168,14 @@ void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch){
     for(int k=0; k<8; k++){
         tmx_processing_flood_fill(r + dr[k], c + dc[k], touch);
     }
+}
 
-
+void finger_rejection_filtering(void){
+    for(int t = 0; t < MAX_NUM_TOUCHES; t++){
+        if(s_current_frame[t].is_active){
+            if(s_current_frame[t].area > REJECTION_AREA_THRESHOLD){
+                s_current_frame[t].is_active = false;
+            }
+        }
+    }
 }

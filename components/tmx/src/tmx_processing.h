@@ -8,10 +8,14 @@
 #define MAX_NUM_TOUCHES 2
 #define MAX_NUM_FRAMES 20
 #define OVERSAMPLING_FACTOR 3
-#define TMX_DELTA_THRESHOLD 10000
+#define TMX_DELTA_THRESHOLD 20000
+#define REJECTION_AREA_THRESHOLD 1000000
 #define OVERSAMPLED_M (TMX_M * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 #define OVERSAMPLED_N (TMX_N * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 
+/**
+ * @brief Data structure for a detected blob.
+ */
 typedef struct {
     bool is_active;
     int ID;
@@ -50,5 +54,10 @@ void tmx_processing_blob_detection(void);
  * @brief Recursive flood fill algorithm to identify connected touch blobs.
  */
 void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch);
+
+/**
+ * @brief Apply finger rejection filtering to the current frame.
+ */
+void finger_rejection_filtering(void);
 
 #endif // TMX_PROCESSING_H
