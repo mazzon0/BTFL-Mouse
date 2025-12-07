@@ -27,4 +27,24 @@ static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {
     TOUCH_PAD_NUM12
 };
 
+typedef enum {
+    TMX_GESTURE_NONE,
+    TMX_GESTURE_BUTTON_PRESSED,
+    TMX_GESTURE_BUTTON_RELEASED,
+    TMX_GESTURE_SCROLL
+} tmx_gesture_type_t;
+
+typedef struct {
+    tmx_gesture_type_t type;
+    
+    union{
+        struct {
+            uint16_t dx;
+            uint16_t dy;
+        };
+
+        uint16_t button;
+    };
+} tmx_gesture_t;
+
 #endif

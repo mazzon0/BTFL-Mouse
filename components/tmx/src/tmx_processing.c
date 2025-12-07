@@ -10,6 +10,7 @@ static tmx_touch_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
 static CircularBuffer_t s_frame_history;
 static tmx_tracker_t s_touch_trackers[MAX_NUM_TOUCHES]; //global blob trackers among frames
 static int s_next_tracker_id = 1;
+static gesture_state_t s_gesture_state = IDLE;
 
 void tmx_processing_raw_read(void)
 {
@@ -40,7 +41,7 @@ void tmx_processing_filtering(void){
             s_filtered_data[i][j] = (uint32_t)(alpha_fast * s_raw_data[i][j] + (1 - alpha_fast) * s_filtered_data[i][j]);
 
             //Second stage: Adaptive baseline with slower EMWA
-            const float alpha_slow = 0.00f;
+            const float alpha_slow = 0.005f;
             s_adaptive_baseline[i][j] = (uint32_t)(alpha_slow * s_filtered_data[i][j] + (1 - alpha_slow) * s_adaptive_baseline[i][j]);
 
             //Compute delta signal
@@ -99,19 +100,23 @@ void tmx_processing_print(void){
     tmx_processing_blob_detection();
     finger_rejection_filtering();
     cb_push(&s_frame_history, s_current_frame);
+    tmx_processing_associate_blobs(get_current_time_ms());
+    tmx_processing_tracker_FSM();
+    
 
     // print results in CSV format
     for(int k = 0; k < MAX_NUM_TOUCHES; k++){
-        if(s_current_frame[k].is_active){
-            tmx_touch_t *touch = &s_current_frame[k];
-            
-            // Stampa CSV: Index,ID,X,Y,Area
-            printf("%d,%.2f,%.2f,%" PRIu32 "\n",
-                k,                         // Slot Index (0 o 1)
-                touch->centroid_x,         // Centroide X (virtuale)
-                touch->centroid_y,         // Centroide Y (virtuale)
-                touch->area                // Area (Intensità)
+        if(s_touch_trackers[k].state != TRACK_IDLE){
+            printf("%d,%d,%.2f,%.2f,%.2f,%.2f,%" PRIu32 "\n",
+                s_touch_trackers[k].ID,
+                s_touch_trackers[k].state,
+                s_touch_trackers[k].current_x,
+                s_touch_trackers[k].current_y,
+                s_touch_trackers[k].start_x,
+                s_touch_trackers[k].start_y,
+                s_touch_trackers[k].last_blob.area
             );
+            
         }
     }
     
@@ -185,7 +190,7 @@ void finger_rejection_filtering(void){
 
 static void tmx_reset_tracker_flags(void) {
     for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
-        if (s_touch_trackers[j].state != UP_IDLE) {
+        if (s_touch_trackers[j].state != TRACK_IDLE) {
             s_touch_trackers[j].last_blob.is_active = false;
         }
     }
@@ -202,7 +207,7 @@ static void tmx_match_existing_trackers(bool tracker_assigned[]) {
 
         for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
 
-            if (s_touch_trackers[j].state != UP_IDLE && !tracker_assigned[j]) {
+            if (s_touch_trackers[j].state != TRACK_IDLE && !tracker_assigned[j]) {
                 float dx = s_current_frame[i].centroid_x - s_touch_trackers[j].current_x;
                 float dy = s_current_frame[i].centroid_y - s_touch_trackers[j].current_y;
                 float d2 = dx * dx + dy * dy;
@@ -216,6 +221,12 @@ static void tmx_match_existing_trackers(bool tracker_assigned[]) {
 
         if (best_tracker_index != -1) {
             tmx_tracker_t *t = &s_touch_trackers[best_tracker_index];
+            
+            t->dx = s_current_frame[i].centroid_x - t->current_x;
+            t->dy = s_current_frame[i].centroid_y - t->current_y;
+
+            t->prev_x = t->current_x;
+            t->prev_y = t->current_y;
 
             t->current_x = s_current_frame[i].centroid_x;
             t->current_y = s_current_frame[i].centroid_y;
@@ -225,6 +236,13 @@ static void tmx_match_existing_trackers(bool tracker_assigned[]) {
     }
 }
 
+static void tmx_idle_unmatched_trackers(bool tracker_assigned[]) {
+    for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
+        if (s_touch_trackers[j].state != TRACK_IDLE && !tracker_assigned[j]) {
+            s_touch_trackers[j].state = TRACK_IDLE;
+        }
+    }
+}
 static void tmx_assign_new_trackers(uint64_t current_time_ms, bool tracker_assigned[]) {
 
     for (int i = 0; i < MAX_NUM_TOUCHES; i++) {
@@ -234,7 +252,7 @@ static void tmx_assign_new_trackers(uint64_t current_time_ms, bool tracker_assig
         bool matched = false;
 
         for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
-            if (s_touch_trackers[j].state != UP_IDLE &&
+            if (s_touch_trackers[j].state != TRACK_IDLE &&
                 tracker_assigned[j] &&
                 s_touch_trackers[j].last_blob.centroid_x == s_current_frame[i].centroid_x &&
                 s_touch_trackers[j].last_blob.centroid_y == s_current_frame[i].centroid_y) {
@@ -245,11 +263,11 @@ static void tmx_assign_new_trackers(uint64_t current_time_ms, bool tracker_assig
 
         if (!matched) {
             for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
-                if (s_touch_trackers[j].state == UP_IDLE) {
+                if (s_touch_trackers[j].state == TRACK_IDLE) {
                     tmx_tracker_t *t = &s_touch_trackers[j];
 
                     t->ID = s_next_tracker_id++;
-                    t->state = DOWN_PENDING;
+                    t->state = STATIC_HOLD;
                     t->down_timestamp = current_time_ms;
 
                     t->start_x = t->current_x = s_current_frame[i].centroid_x;
@@ -272,9 +290,92 @@ void tmx_processing_associate_blobs(uint64_t current_time_ms) {
 
     tmx_match_existing_trackers(tracker_assigned);
 
+    tmx_idle_unmatched_trackers(tracker_assigned);
+
     tmx_assign_new_trackers(current_time_ms, tracker_assigned);
 }
 
-void tmx_processing_temporal_analysis(void){
+void tmx_processing_tracker_FSM(void){
+    for(int i = 0; i < MAX_NUM_TOUCHES; i++){
+        tmx_tracker_t* t = &s_touch_trackers[i];
+        float dx, dy, dist_sq;
+        dx= t->current_x - t->start_x;
+        dy= t->current_y - t->start_y;
+        dist_sq = dx * dx + dy * dy;
+        switch(t->state){
+            case TRACK_IDLE:
+                //Handled in association function
+                break;
+            case STATIC_HOLD:
+                if(dist_sq > CLICK_MAX_MOVE_SQUARED){
+                    t->state = MOTION_ACTIVE;
+                }
+                break;
+            case MOTION_ACTIVE:
+                break;
+            default:
+                break;
+        }
+    }
 
 }
+
+/*
+
+tmx_gesture_t tmx_processing_detect_gestures(void){
+    tmx_gesture_t gesture;
+    gesture.type = TMX_GESTURE_NONE;
+
+    switch(s_gesture_state){
+        case IDLE:  //No gesture detected
+            int active_touches = 0;
+            for(int i = 0; i < MAX_NUM_TOUCHES; i++){
+                if(s_touch_trackers[i].state != TRACK_IDLE){
+                    active_touches++;
+                }
+            }
+
+            if(active_touches == 1){
+                s_gesture_state = ONE_FINGER;
+            } else if(active_touches == 2){
+                s_gesture_state = TWO_FINGER;
+            }
+            break;
+        case ONE_FINGER:
+            //Handle one finger gestures
+            tmx_tracker_t* t = NULL;
+            for(int i = 0; i < MAX_NUM_TOUCHES; i++){
+                if(s_touch_trackers[i].state != TRACK_IDLE){
+                    t = &s_touch_trackers[i];
+                    break;
+                }
+            }
+
+            if(t == NULL){
+                s_gesture_state = IDLE;
+                break;
+            } 
+
+            if(t->state == STATIC_HOLD){
+                int right;
+                if(t->current_y < //inserisci prima metà)
+            }
+            break;
+        case TWO_FINGER:
+            //Handle two finger gestures
+            break;
+        case CLICK:
+            //Handle click gesture
+            break;
+        case TWO_SWIPE:
+            //Handle two finger swipe gesture
+            break;
+        default:
+            break;
+    }
+    
+
+    return gesture;
+}
+
+*/

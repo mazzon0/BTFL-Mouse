@@ -9,18 +9,26 @@
 #define MAX_NUM_FRAMES 20
 #define OVERSAMPLING_FACTOR 3
 #define TMX_DELTA_THRESHOLD 20000
-#define REJECTION_AREA_THRESHOLD 1000000
+#define REJECTION_AREA_THRESHOLD 1100000
 #define MAX_DISTANCE_SQUARED 40000.0f // 200 pixels squared
+#define CLICK_MAX_MOVE_SQUARED 1.0f
+#define CLICK_MAX_DURATION_MS 100
 #define OVERSAMPLED_M (TMX_M * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 #define OVERSAMPLED_N (TMX_N * OVERSAMPLING_FACTOR-(OVERSAMPLING_FACTOR-1))
 
 typedef enum{
-    UP_IDLE,
-    DOWN_PENDING,
-    CLICK_DETECTED,
-    SWIPE_DETECTED,
-    RELEASE_PENDING
-} state_t;
+    TRACK_IDLE,
+    STATIC_HOLD,
+    MOTION_ACTIVE
+} tracker_state_t;
+
+typedef enum{
+    IDLE,
+    ONE_FINGER,
+    TWO_FINGER,
+    CLICK,
+    TWO_SWIPE
+} gesture_state_t;
 
 /**
  * @brief Data structure for a detected blob.
@@ -38,10 +46,12 @@ typedef struct {
  */
 typedef struct {
     int ID;
-    state_t state;
+    tracker_state_t state;
     uint64_t down_timestamp;
     float start_x, start_y;
     float current_x, current_y;
+    float prev_x, prev_y;
+    float dx, dy;
     tmx_touch_t last_blob;
 } tmx_tracker_t;
 
@@ -84,5 +94,11 @@ void finger_rejection_filtering(void);
  * @brief Associate detected blobs with existing trackersuusing nearest neighbor criteria.
  */
 void tmx_processing_associate_blobs(uint64_t current_time_ms);
+
+/**
+ * @brief Update the state machine for each touch tracker.
+ */
+void tmx_processing_tracker_FSM();
+
 
 #endif // TMX_PROCESSING_H
