@@ -7,7 +7,7 @@ void app_main(void)
     while (1)
     {
         tmx_print();
-        vTaskDelay(10 / portTICK_PERIOD_MS); // Add a delay to avoid flooding the output
+        vTaskDelay(50 / portTICK_PERIOD_MS); // Add a delay to avoid flooding the output
     }
     
     

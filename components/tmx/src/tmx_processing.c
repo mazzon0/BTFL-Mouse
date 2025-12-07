@@ -102,8 +102,26 @@ void tmx_processing_print(void){
     cb_push(&s_frame_history, s_current_frame);
     tmx_processing_associate_blobs(get_current_time_ms());
     tmx_processing_tracker_FSM();
+    tmx_gesture_t gesture = tmx_processing_detect_gestures();
     
+    if(gesture.type != TMX_GESTURE_NONE){
+        // print gesture info
+        switch(gesture.type){
+            case TMX_GESTURE_BUTTON_PRESSED:
+                printf("GESTURE, BUTTON_PRESSED, %d\n", gesture.button);
+                break;
+            case TMX_GESTURE_BUTTON_RELEASED:
+                printf("GESTURE, BUTTON_RELEASED, %d\n", gesture.button);
+                break;
+            case TMX_GESTURE_SCROLL:
+                printf("GESTURE, SCROLL, dx=%d, dy=%d\n", gesture.dx, gesture.dy);
+                break;
+            default:
+                break;
+        }
+    }
 
+    /*
     // print results in CSV format
     for(int k = 0; k < MAX_NUM_TOUCHES; k++){
         if(s_touch_trackers[k].state != TRACK_IDLE){
@@ -122,6 +140,7 @@ void tmx_processing_print(void){
     
     // Frame marker
     printf("FRAME_END\n");
+    */
 }
 
 void tmx_processing_blob_detection(void){
@@ -239,7 +258,7 @@ static void tmx_match_existing_trackers(bool tracker_assigned[]) {
 static void tmx_idle_unmatched_trackers(bool tracker_assigned[]) {
     for (int j = 0; j < MAX_NUM_TOUCHES; j++) {
         if (s_touch_trackers[j].state != TRACK_IDLE && !tracker_assigned[j]) {
-            s_touch_trackers[j].state = TRACK_IDLE;
+            s_touch_trackers[j].state = TRACK_RELEASED;
         }
     }
 }
@@ -305,6 +324,7 @@ void tmx_processing_tracker_FSM(void){
         switch(t->state){
             case TRACK_IDLE:
                 //Handled in association function
+                t->is_pressed_reported = false;
                 break;
             case STATIC_HOLD:
                 if(dist_sq > CLICK_MAX_MOVE_SQUARED){
@@ -313,6 +333,8 @@ void tmx_processing_tracker_FSM(void){
                 break;
             case MOTION_ACTIVE:
                 break;
+            case TRACK_RELEASED:
+                break;
             default:
                 break;
         }
@@ -320,7 +342,7 @@ void tmx_processing_tracker_FSM(void){
 
 }
 
-/*
+
 
 tmx_gesture_t tmx_processing_detect_gestures(void){
     tmx_gesture_t gesture;
@@ -345,7 +367,7 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
             //Handle one finger gestures
             tmx_tracker_t* t = NULL;
             for(int i = 0; i < MAX_NUM_TOUCHES; i++){
-                if(s_touch_trackers[i].state != TRACK_IDLE){
+                if(s_touch_trackers[i].state  != TRACK_IDLE){
                     t = &s_touch_trackers[i];
                     break;
                 }
@@ -355,27 +377,78 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
                 s_gesture_state = IDLE;
                 break;
             } 
-
+             //single click
             if(t->state == STATIC_HOLD){
-                int right;
-                if(t->current_y < //inserisci prima metà)
+                if(t->is_pressed_reported == false){
+                    bool right = (t->current_y < OVERSAMPLED_M/2)?1:0;
+                    gesture.type = TMX_GESTURE_BUTTON_PRESSED;
+                    gesture.button = right ? 2 : 0; //Right button : Left button
+                    t->is_pressed_reported = true;
+                }
+            } else if (t->state == MOTION_ACTIVE){ //single swipe -- for now not implemented
+                //for now no gesture
+            } else if(t->state == TRACK_RELEASED){ //button release
+                gesture.type = TMX_GESTURE_BUTTON_RELEASED;
+                bool right = (t->current_y < OVERSAMPLED_M/2)?1:0;
+                gesture.button = right ? 2 : 0; //Right button : Left button
+                s_gesture_state = IDLE;
+
+                for(int j = 0; j < MAX_NUM_TOUCHES; j++) {
+                    if(s_touch_trackers[j].state == TRACK_RELEASED) {
+                        s_touch_trackers[j].state = TRACK_IDLE;
+                        s_touch_trackers[j].is_pressed_reported = false; 
+                    }
+                }
             }
             break;
         case TWO_FINGER:
-            //Handle two finger gestures
-            break;
-        case CLICK:
-            //Handle click gesture
-            break;
-        case TWO_SWIPE:
-            //Handle two finger swipe gesture
+
+            int total_active_touches = 0;
+            // tracker in movement
+            int moving_fingers = 0; 
+            float total_dx = 0.0f;
+            float total_dy = 0.0f;
+
+            for(int i = 0; i < MAX_NUM_TOUCHES; i++){
+                if(s_touch_trackers[i].state != TRACK_IDLE){
+                    total_active_touches++;
+                    
+                    // Motion for not released trackers
+                    if(s_touch_trackers[i].state == MOTION_ACTIVE){
+                        moving_fingers++;
+                        total_dx += s_touch_trackers[i].dy;
+                        total_dy += s_touch_trackers[i].dx; 
+                    }
+
+                }
+                
+                // Release completed, reset tracker
+                if(s_touch_trackers[i].state == TRACK_RELEASED){
+                    s_touch_trackers[i].state = TRACK_IDLE; 
+                }
+            }
+
+            // State transition: use the total count of touches
+            if(total_active_touches < 2){
+                if(total_active_touches == 1) {
+                    s_gesture_state = ONE_FINGER; // Switch to one-finger gesture if one remains
+                } else {
+                    s_gesture_state = IDLE; // Return to IDLE if zero touches
+                }
+                break;
+            }
+            
+            // Scroll gesture (if there are at least 2 active fingers and at least 1 finger in motion)
+            if(moving_fingers >= 1){ 
+                gesture.type = TMX_GESTURE_SCROLL;
+                float divisor = (float)moving_fingers;
+
+                gesture.dx = (int)(total_dx / divisor); 
+                gesture.dy = (int)(total_dy / divisor); 
+            }
             break;
         default:
             break;
     }
-    
-
     return gesture;
 }
-
-*/

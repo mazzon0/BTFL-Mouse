@@ -19,15 +19,14 @@
 typedef enum{
     TRACK_IDLE,
     STATIC_HOLD,
-    MOTION_ACTIVE
+    MOTION_ACTIVE,
+    TRACK_RELEASED
 } tracker_state_t;
 
 typedef enum{
     IDLE,
     ONE_FINGER,
-    TWO_FINGER,
-    CLICK,
-    TWO_SWIPE
+    TWO_FINGER
 } gesture_state_t;
 
 /**
@@ -53,6 +52,7 @@ typedef struct {
     float prev_x, prev_y;
     float dx, dy;
     tmx_touch_t last_blob;
+    bool is_pressed_reported;
 } tmx_tracker_t;
 
 /**
@@ -99,6 +99,11 @@ void tmx_processing_associate_blobs(uint64_t current_time_ms);
  * @brief Update the state machine for each touch tracker.
  */
 void tmx_processing_tracker_FSM();
+
+/**
+ * @brief Detect gestures based on the current state of touch trackers.
+ */
+tmx_gesture_t tmx_processing_detect_gestures(void);
 
 
 #endif // TMX_PROCESSING_H
