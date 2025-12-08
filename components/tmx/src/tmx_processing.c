@@ -365,6 +365,21 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
             break;
         case ONE_FINGER:
             //Handle one finger gestures
+            active_touches = 0;
+            for(int i = 0; i < MAX_NUM_TOUCHES; i++){
+                if(s_touch_trackers[i].state != TRACK_IDLE){
+                    active_touches++;
+                }
+            }
+            if(active_touches == 2){
+                s_gesture_state = TWO_FINGER;
+                break;
+            } else if(active_touches == 0){
+                s_gesture_state = IDLE;
+                break;
+            }
+
+             //find the active tracker
             tmx_tracker_t* t = NULL;
             for(int i = 0; i < MAX_NUM_TOUCHES; i++){
                 if(s_touch_trackers[i].state  != TRACK_IDLE){
@@ -443,7 +458,7 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
                 gesture.type = TMX_GESTURE_SCROLL;
                 float divisor = (float)moving_fingers;
 
-                gesture.dx = (int)(total_dx / divisor); 
+                gesture.dx = 0; //for now only vertical scroll 
                 gesture.dy = (int)(total_dy / divisor); 
             }
             break;
