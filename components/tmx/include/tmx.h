@@ -13,5 +13,9 @@ esp_err_t tmx_init(void);
  */
 esp_err_t tmx_print(void);
 
+/**
+ * @brief Process the TMX touchpad data pipeline.
+ */
+tmx_gesture_t tmx_pipeline_process(void);
 
 #endif

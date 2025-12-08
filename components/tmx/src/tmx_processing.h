@@ -66,6 +66,11 @@ esp_err_t tmx_processing_init(void);
 void tmx_processing_print(void);
 
 /**
+ * @brief Read raw touch data from the TMX driver.
+ */
+void tmx_processing_raw_read(void);
+
+/**
  * @brief Apply EMWA filtering to raw touch data. Differentiate between fast and slow variations.
  */
 void tmx_processing_filtering(void);

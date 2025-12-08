@@ -12,6 +12,9 @@
 #define TMX_N 3
 #define TMX_NUM_TOUCH_PADS (TMX_M * TMX_N)
 
+/**
+ * @brief Mapping of TMX touch pads to ESP32-S3 touch pad channels.
+ */
 static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {
     TOUCH_PAD_NUM1,
     TOUCH_PAD_NUM2,
@@ -27,6 +30,9 @@ static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {
     TOUCH_PAD_NUM12
 };
 
+/**
+ * @brief Enumeration for different gesture types.
+ */
 typedef enum {
     TMX_GESTURE_NONE,
     TMX_GESTURE_BUTTON_PRESSED,
@@ -34,6 +40,9 @@ typedef enum {
     TMX_GESTURE_SCROLL
 } tmx_gesture_type_t;
 
+/**
+ * @brief Data structure for a detected gesture.
+ */
 typedef struct {
     tmx_gesture_type_t type;
     
