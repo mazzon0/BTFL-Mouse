@@ -26,6 +26,8 @@ const ble_uuid16_t mouse_report_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_REPORT);
 const ble_uuid16_t mouse_boot_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT);
 const ble_uuid16_t report_ref_mouse_in_uuid = BLE_UUID16_INIT(BLE_UUID_DSC_REPORT_REF);
 
+hogp_handles_t handles;     // handles for the ble definitions
+
 // Protocol definitions
 #define HOGP_USB_VERSION_MAJOR_BCD  0x01
 #define HOGP_USB_VERSION_MINOR_BCD  0x11
@@ -85,7 +87,7 @@ static const struct ble_gatt_svc_def services[] = {
                 .uuid = (const ble_uuid_t *) &mouse_report_uuid,
                 .access_cb = hid_report_mouse_access_cb,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = NULL,
+                .val_handle = &handles.mouse_report,
                 .descriptors = (struct ble_gatt_dsc_def[]) {
                     {
                         .uuid = (const ble_uuid_t *) &report_ref_mouse_in_uuid,
@@ -100,82 +102,79 @@ static const struct ble_gatt_svc_def services[] = {
                 .uuid = (const ble_uuid_t *) &mouse_boot_uuid,
                 .access_cb = hid_boot_mouse_access_cb,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = NULL,
+                .val_handle = &handles.mouse_boot,
             },
             // End of characteristics
             { 0 }
         },
     },
+    {
+        0
+    }
 };
 
 
 // Public functions
 
-int hogp_gap_init(void) {
+hogp_error_t hogp_gap_init(void) {
     int rc = 0;
     hogp_context_t *ctx = hogp_get_context();
+
+    INFO("Initializing GAP");
 
     ble_svc_gap_init();
 
     rc = ble_svc_gap_device_name_set(ctx->device.device_name);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to set device name to %s, error code: %d", ctx->device.device_name, rc);
-        return rc;
+        ERROR("Failed to set the device name to '%s'. Got the error code %d", ctx->device.device_name, rc);
+        return HOGP_OPERATION_FAILED;
     }
 
     rc = ble_svc_gap_device_appearance_set(ctx->device.appearance);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to set device appearance, error code: %d", rc);
-        return rc;
+        ERROR("Failed to set the device appearance to %d. Got the error code %d", ctx->device.appearance, rc);
+        return HOGP_OPERATION_FAILED;
     }
 
-    return rc;
+    return HOGP_OK;
 }
 
-int hogp_gatt_init(void) {
+hogp_error_t hogp_gatt_init(void) {
     hogp_context_t *ctx = hogp_get_context();
     int rc = 0;
 
+    INFO("Initializing GATT");
     ble_svc_gatt_init();
-    ESP_LOGI(HID_TAG, "Initializing GATT");
 
     set_service_uuids();
 
     rc = ble_gatts_count_cfg(services);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "Error configuring the GATT services");
-        return rc;
+        ERROR("GATT services have an invalid definition. Error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
     }
-    ESP_LOGI(HID_TAG, "GATT services configured");
 
     rc = ble_gatts_add_svcs(services);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "Error adding the GATT services");
+        ERROR("GATT services not registered. Error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
+    }
+
+    /*rc = ble_gatts_find_chr(BLE_UUID16_DECLARE(BLE_UUID_SVC_HID), BLE_UUID16_DECLARE(BLE_UUID_CHR_REPORT), NULL, &ctx->connection.handles.mouse_report);
+    if (rc != 0) {
+        ERROR("Failed to find the mouse report characteristic (svc: %d, chr: %d)", hid_service_uuid, mouse_report_uuid);
         return rc;
     }
-    ESP_LOGI(HID_TAG, "GATT services added");
-
-    // Get handles TODO check uuid vs uuid16
-    /*const ble_uuid_t HID_SVC_UUID = BLE_UUID128_INIT(BLE_UUID_SVC_HID);
-    const ble_uuid_t MOUSE_REPORT_UUID = BLE_UUID128_INIT(BLE_UUID_CHR_REPORT);
-    const ble_uuid_t MOUSE_BOOT_UUID = BLE_UUID128_INIT(BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT);
-    if (ble_gatts_find_chr(&HID_SVC_UUID, &MOUSE_REPORT_UUID, NULL, &ctx->connection.handles.mouse_report) != 0) {
-        // TODO error handling
-    }
-    if (ble_gatts_find_chr(&HID_SVC_UUID, &MOUSE_BOOT_UUID, NULL, &ctx->connection.handles.mouse_boot) != 0) {
-
+    rc = ble_gatts_find_chr((const ble_uuid_t *)&hid_service_uuid, (const ble_uuid_t *)&mouse_boot_uuid, NULL, &ctx->connection.handles.mouse_boot);
+    if (rc != 0) {
+        ERROR("Failed to find the mouse boot characteristic (svc: %d, chr: %d)", hid_service_uuid, mouse_boot_uuid);
+        return rc;
     }*/
-   if (ble_gatts_find_chr((const ble_uuid_t *)&hid_service_uuid, (const ble_uuid_t *)&mouse_report_uuid, NULL, &ctx->connection.handles.mouse_report) != 0) {
-        // TODO error handling
-    }
-    if (ble_gatts_find_chr((const ble_uuid_t *)&hid_service_uuid, (const ble_uuid_t *)&mouse_boot_uuid, NULL, &ctx->connection.handles.mouse_boot) != 0) {
 
-    }
-
-    return rc;
+    return HOGP_OK;
 }
 
-int hogp_nimble_config(void) {
+hogp_error_t hogp_nimble_config(void) {
     ble_hs_cfg.reset_cb = ble_stack_reset_callback;
     ble_hs_cfg.sync_cb = ble_stack_sync_callback;
     //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; // TODO
@@ -188,10 +187,10 @@ int hogp_nimble_config(void) {
 
     ble_store_config_init();
 
-    return 0;
+    return HOGP_OK;
 }
 
-int hogp_start_advertising(void) {
+hogp_error_t hogp_start_advertising(void) {
     int rc = 0;
     const char *name;
 
@@ -210,8 +209,8 @@ int hogp_start_advertising(void) {
 
     rc = ble_gap_adv_set_fields(&adv_fields);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to set advertising data, error code: %d", rc);
-        return rc;
+        ERROR("Failed to set advertising data, error core %d", rc);
+        return HOGP_OPERATION_FAILED;
     }
 
     name = ble_svc_gap_device_name();
@@ -221,8 +220,8 @@ int hogp_start_advertising(void) {
 
     rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to set scan response data, error code: %d", rc);
-        return rc;
+        ERROR("Failed to set scan response data, error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
     }
 
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
@@ -232,57 +231,85 @@ int hogp_start_advertising(void) {
 
     rc = ble_gap_adv_start(ctx->connection.own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event_callback, NULL);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to start advertising, error code: %d", rc);
-        return rc;
+        ERROR("Start advertising failed, error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
     }
 
-    ESP_LOGI(HID_TAG, "advertising started!");    
+    INFO("Advertising started successfully");
 
-    return rc;
+    return HOGP_OK;
 }
 
-int hogp_notify(uint8_t *message, uint8_t size) {
+hogp_error_t hogp_connect(uint16_t handle) {
+    hogp_context_t *ctx = hogp_get_context();
+    struct ble_gap_conn_desc desc;
+    int rc = ble_gap_conn_find(handle, &desc);
+    if (rc != 0) {
+        ERROR("Failed to find connection by handle, error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
+    }
+
+    ctx->connection.conn_handle = handle;
+    WARN("conn_handle = %d, placed at %d", ctx->connection.conn_handle, &ctx->connection.conn_handle);
+
+    struct ble_gap_upd_params params = {
+        .itvl_min = desc.conn_itvl,
+        .itvl_max = desc.conn_itvl,
+        .latency = 3,
+        .supervision_timeout = desc.supervision_timeout,
+    };
+
+    rc = ble_gap_update_params(handle, &params);
+    if (rc != 0) {
+        ERROR("Failed to update connection parameters, error code: %d", rc);
+        return HOGP_OPERATION_FAILED;
+    }
+
+    return HOGP_OK;
+}
+
+hogp_error_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t chr) {
     hogp_context_t *ctx = hogp_get_context();
     struct os_mbuf *om = ble_hs_mbuf_from_flat(message, sizeof(uint8_t) * size);
     
     // Check for allocation failure
     if (om == NULL) {
-        ESP_LOGE(HID_TAG, "Error: No memory for mbuf!");
-        return -1;
+        ERROR("No memory available for mbuf");
+        return HOGP_OPERATION_FAILED;
     }
     
     // Send notification
-    int rc = 0;
-    if (ctx->connection.protocol == HOGP_PROTOCOL_REPORT) {
-        rc = ble_gatts_notify_custom(ctx->connection.conn_handle, ctx->connection.handles.mouse_report, om);
-    }
-    else if (ctx->connection.protocol == HOGP_PROTOCOL_BOOT) {
-        rc = ble_gatts_notify_custom(ctx->connection.conn_handle, ctx->connection.handles.mouse_boot, om);
-    }
+    int rc = ble_gatts_notify_custom(ctx->connection.conn_handle, handles.values[(int)chr], om);
     
     if (rc == 0) {
-        ESP_LOGI(HID_TAG, "Test: Sent Mouse Movement");
+        INFO("Notification sent successfully");
     } else {
-        ESP_LOGW(HID_TAG, "Test: Failed to send (Error %d)", rc);
-        os_mbuf_free_chain(om);
+        WARN("Notification send failed, error code: %d", rc);
+        //os_mbuf_free_chain(om);
+        return HOGP_OPERATION_FAILED;
     }
-    return 0;
+    return HOGP_OK;
 }
 
-int hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
+hogp_error_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
     hogp_context_t *ctx = hogp_get_context();
 
     int i;
     for (i = 0; i < HOGP_HANDLE_COUNT; i++) {
-        if (ctx->connection.handles.values[i] == handle) break;
+        if (handles.values[i] == handle) break;
+    }
+
+    if (i == HOGP_HANDLE_COUNT) {
+        return HOGP_OK;     // TODO is this a warning?
     }
 
     if (subscription_type & 1)  ctx->connection.indicate_sub.subs[i] = true;
     else                        ctx->connection.indicate_sub.subs[i] = false;
+    
     if (subscription_type & 2)  ctx->connection.notify_sub.subs[i]   = true;
     else                        ctx->connection.notify_sub.subs[i]   = false;
 
-    return 0;
+    return HOGP_OK;
 }
 
 
@@ -338,7 +365,7 @@ static void ble_stack_sync_callback(void) { // TODO refactor
     hogp_control_event_t event;
     event.type = HOGP_CEVT_BLE_READY;
 
-    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 1 / portTICK_PERIOD_MS) != pdPASS) {
+    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
         ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
     }
 }
@@ -365,22 +392,10 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
 
             // Connect event
             e.type = HOGP_CEVT_CONNECT;
-            if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+            e.conn_handle = event->connect.conn_handle;
+            if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
                 ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
                 return -1;
-            }
-
-            struct ble_gap_upd_params params = {
-                .itvl_min = desc.conn_itvl,
-                .itvl_max = desc.conn_itvl,
-                .latency = 3,
-                .supervision_timeout = desc.supervision_timeout,
-            };
-
-            rc = ble_gap_update_params(event->connect.conn_handle, &params);
-            if (rc != 0) {
-                ESP_LOGE(HID_TAG, "failed to update connection parameters, error code: %d", rc);
-                return rc;
             }
         }
         return rc;
@@ -389,7 +404,7 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         ESP_LOGI(HID_TAG, "disconnected from peer; reason=%d", event->disconnect.reason);
 
         e.type = HOGP_CEVT_DISCONNECT;
-        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
             ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
             return -1;
         }
@@ -399,18 +414,19 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_CONN_UPDATE:
         ESP_LOGI(HID_TAG, "connection updated; status=%d", event->conn_update.status);
 
-        rc = ble_gap_conn_find(event->conn_update.conn_handle, &desc);
+        rc = ble_gap_conn_find(event->conn_update.conn_handle, &desc);  // TODO handle in the FSM or remove
         if (rc != 0) {
             ESP_LOGE(HID_TAG, "failed to find connection by handle, error code: %d", rc);
             return rc;
         }
+
         return rc;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
         ESP_LOGI(HID_TAG, "advertise complete; reason=%d", event->adv_complete.reason);
 
         e.type = HOGP_CEVT_ADV_COMPLETE;
-        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
             ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
             return -1;
         }
@@ -419,7 +435,7 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_NOTIFY_TX:
         if (event->notify_tx.status == 0) {
             e.type = HOGP_CEVT_NOTIFY_TX;
-            if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+            if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
                 ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
                 return -1;
             }
@@ -439,7 +455,7 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         e.sub = 0;
         if (event->subscribe.cur_indicate != 0) e.sub |= 1;
         if (event->subscribe.cur_notify != 0)   e.sub |= 2;
-        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
             ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
             return -1;
         }
@@ -452,7 +468,7 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         
         e.type = HOGP_CEVT_MTU;
         e.mtu = event->mtu.value;
-        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
             ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
             return -1;
         }
@@ -520,7 +536,7 @@ static int hid_control_point_access_cb(uint16_t conn_handle, uint16_t attr_handl
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
     }
     
-    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 1 / portTICK_PERIOD_MS) != pdPASS) {
+    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
         ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
         return -1;
     }
@@ -550,7 +566,7 @@ static int hid_protocol_mode_access_cb(uint16_t conn_handle, uint16_t attr_handl
             event.protocol = HOGP_PROTOCOL_REPORT;
         }
 
-        if (xQueueSendToBackFromISR(ctx->control_queue, &event, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
             ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
             return -1;
         }

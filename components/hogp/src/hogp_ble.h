@@ -1,17 +1,24 @@
 #ifndef HOGP_BLE_H
 #define HOGP_BLE_H
-#include <stdint.h>
+#include "hogp_common.h"
 
-int hogp_gap_init(void);
+typedef enum {  // the order of the values MUST match the order of the boolean values is hogp_common.h -> hogp_sub_t -> anonymous struct
+    MOUSE_REPORT,
+    MOUSE_BOOT,
+} hogp_characteristics_t;
 
-int hogp_gatt_init(void);
+hogp_error_t hogp_gap_init(void);
 
-int hogp_nimble_config(void);
+hogp_error_t hogp_gatt_init(void);
 
-int hogp_start_advertising(void);
+hogp_error_t hogp_nimble_config(void);
 
-int hogp_notify(uint8_t *message, uint8_t size);    // TODO add indicate
+hogp_error_t hogp_start_advertising(void);
 
-int hogp_subscribe(uint16_t handle, uint8_t subscription_type);
+hogp_error_t hogp_connect(uint16_t handle);
+
+hogp_error_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t chr);    // TODO add indicate
+
+hogp_error_t hogp_subscribe(uint16_t handle, uint8_t subscription_type);
 
 #endif

@@ -9,7 +9,7 @@ static void nimble_run_task(void *param);
 
 int hogp_setup(const hogp_init_info_t *const init_info) {
     esp_err_t ret = ESP_OK;
-    int rc = 0;
+    hogp_error_t rc = 0;
 
     // Init flash drive TODO should be done in main?
     ret = nvs_flash_init();
@@ -18,28 +18,28 @@ int hogp_setup(const hogp_init_info_t *const init_info) {
         ret = nvs_flash_init();
     }
     if (ret != ESP_OK) {
-        ESP_LOGE(HID_TAG, "failed to initialize nvs flash, error code: %d ", ret);
-        return -1;
+        ERROR("Failed to initialize nvs flash, error code: %d ", ret);
+        return HOGP_OPERATION_FAILED;
     }
 
     // Init ble stack (NimBLE)
     ret = nimble_port_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(HID_TAG, "failed to initialize nimble stack, error code: %d", ret);
-        return -2;
+        ERROR("Failed to initialize nimble stack, error code: %d", ret);
+        return HOGP_OPERATION_FAILED;
     }
 
     // Initialize HOGP context based on the init_info
     rc = hogp_context_init(init_info);
-    if (rc != 0) return rc;
+    if (rc != HOGP_OK) return rc;
 
     // Initialize BLE GAP (Generic Access Profile)
     rc = hogp_gap_init();
-    if (rc != 0) return rc;
+    if (rc != HOGP_OK) return rc;
 
     // Initialize BLE GATT (Generic Attribute Profile)
     rc = hogp_gatt_init();
-    if (rc != 0) return rc;
+    if (rc != HOGP_OK) return rc;
 
     // Config NimBLE (callbacks, security, conding with devices)
     hogp_nimble_config();
@@ -50,7 +50,7 @@ int hogp_setup(const hogp_init_info_t *const init_info) {
     // Schedule HOGP task
     xTaskCreate(hogp_task, "HOGP FSM", 4 * 1024, NULL, 5, NULL);
 
-    return rc;
+    return HOGP_OK;
 }
 
 int hogp_shutdown(void) {
@@ -58,21 +58,21 @@ int hogp_shutdown(void) {
     // handle the case if the task do not delete itself
 
     hogp_context_shutdown();
-    return 0;
+    return HOGP_OK;
 }
 
 int hogp_send_data(const hogp_data_event_t *event) {
     hogp_context_t *ctx = hogp_get_context();
 
-    if (xQueueSendToBackFromISR(ctx->data_queue, event, 1 / portTICK_PERIOD_MS) != pdPASS) { // TODO should be used in ISR?
-        ESP_LOGE(HID_TAG, "ERROR: waited too much to add the data event in the queue");
-        return -1;
+    if (xQueueSendToBackFromISR(ctx->data_queue, event, 0) != pdPASS) { // TODO should be used in ISR?
+        ERROR("Push to data queue failed");
+        return HOGP_PUSH_FAILED;
     }
-    return 0;
+    return HOGP_OK;
 }
 
 static void nimble_run_task(void *param) {
-    ESP_LOGI(HID_TAG, "nimble run task has been started");
+    INFO("Nimble run task has been started");
     nimble_port_run();
     vTaskDelete(NULL);
 }

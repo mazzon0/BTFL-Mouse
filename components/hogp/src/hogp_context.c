@@ -4,7 +4,7 @@
 #include "hogp_control_events.h"
 #include <string.h>
 
-int hogp_context_init(const hogp_init_info_t *const init_info) {
+int hogp_context_init(const hogp_init_info_t *init_info) {
     int rc = 0;
     hogp_context_t *ctx = hogp_get_context();
     
@@ -12,10 +12,11 @@ int hogp_context_init(const hogp_init_info_t *const init_info) {
 
     ctx->connection = (hogp_conn_t) {0};
     ctx->connection.mtu = 23;
+    ctx->connection.tx_arrived = true;
     ctx->connection.protocol = HOGP_PROTOCOL_REPORT;
     ctx->device.appearance = init_info->device_data.appearance;
     strcpy(ctx->device.device_name, init_info->device_data.device_name);
-    ctx->state = HOGP_STATE_START;
+    ctx->state = HOGP_STATE_IDLE;
     ctx->update_period_ms = init_info->update_period_ms;
 
     ctx->control_queue = xQueueCreate(16, sizeof(hogp_control_event_t));
@@ -31,6 +32,6 @@ int hogp_context_shutdown(void) {
     vQueueDelete(ctx->control_queue);
     vQueueDelete(ctx->data_queue);
 
-    *ctx = (hogp_context_t) {0}; // TODO does this really work?
+    *ctx = (hogp_context_t) {0};
     return rc;
 }

@@ -9,6 +9,7 @@ typedef enum {
     HOGP_CEVT_CONNECT,
     HOGP_CEVT_DISCONNECT,
     HOGP_CEVT_ADV_COMPLETE,
+    HOGP_CEVT_ADV_STARTED,
     HOGP_CEVT_NOTIFY_TX,
     HOGP_CEVT_SUBSCRIBE,
     HOGP_CEVT_MTU,
@@ -23,6 +24,7 @@ typedef struct {
         hogp_protocol_t protocol;
         uint8_t reason;
         uint8_t mtu;
+        uint16_t conn_handle;
         struct {
             uint16_t sub_handle;
             uint8_t sub;    // bit 0: indicate, bit 1: notify

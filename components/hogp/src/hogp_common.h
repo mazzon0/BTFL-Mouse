@@ -21,6 +21,16 @@
 #include "hogp_user_common.h"
 
 #define HID_TAG "BLE HID Device"
+#define FILE_BASENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#define ERROR(fmt, ...) \
+    ESP_LOGE(HID_TAG, "ERROR %s:%d (%s): " fmt, \
+             FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
+#define WARN(fmt, ...) \
+    ESP_LOGW(HID_TAG, "WARN %s:%d (%s): " fmt, \
+             FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
+#define INFO(fmt, ...) \
+    ESP_LOGI(HID_TAG, "INFO %s:%d (%s): " fmt, \
+             FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
 
 #define HOGP_NUM_SERVICES 1
 #define HOGP_HANDLE_COUNT 4
@@ -56,7 +66,7 @@ typedef enum {
 
 typedef struct {
     ble_uuid16_t svc_uuids[HOGP_NUM_SERVICES];
-    hogp_handles_t handles;
+    //hogp_handles_t handles;   // Moved global in hogp_ble.c, due to issued with the NimBLE stack, but conceptually they chould stay here
     hogp_sub_t indicate_sub;
     hogp_sub_t notify_sub;
 
