@@ -1,23 +1,38 @@
 #ifndef HOGP_DEFINES_H
 #define HOGP_DEFINES_H
 
+/**
+ * @brief Maximum length for the device name string (including terminator).
+ * * Limits the size of the buffer used for the advertising name.
+ */
 #define HOGP_DEVICE_NAME_MAX_CHARACTERS 31
 
+/** @brief BLE Appearance value for a generic Mouse. */
 #define HOGP_APPEARANCE_MOUSE       0x03c2
+/** @brief BLE Appearance value for a generic Keyboard. */
 #define HOGP_APPEARANCE_KEYBOARD    0x03c1
+/** @brief BLE Appearance value for a custom HID device. */
 #define HOGP_APPEARANCE_CUSTOM      0x03c0
 
 #include <stdint.h>
-#include "hogp_error_codes.h"
+#include "hogp_results.h"
 
+/**
+ * @brief Configuration data defining the device's appearance and name.
+ * * This struct holds the static information presented to the host during scanning.
+ */
 typedef struct {
-    char device_name[HOGP_DEVICE_NAME_MAX_CHARACTERS];
-    uint16_t appearance;
+    char device_name[HOGP_DEVICE_NAME_MAX_CHARACTERS]; /**< The name advertised over BLE. */
+    uint16_t appearance;                               /**< The BLE Appearance characteristic value. */
 } hogp_device_data_t;
 
+/**
+ * @brief Initialization information structure.
+ * * Passed to `hogp_setup` or `hogp_context_init` to configure the library on startup.
+ */
 typedef struct {
-    hogp_device_data_t device_data;         /**< Appearance of the Bluetooth device to other devices. Possible values are HOGP_APPEARANCE_MOUSE, HOGP_APPEARANCE_KEYBOARD and HOGP_APPEARANCE_CUSTOM */
-    uint16_t update_period_ms;              /**< Update period of the Bluetooth connection task (FreeRTOS task) in milliseconds */
+    hogp_device_data_t device_data;         /**< Device appearance settings (name, category like Mouse/Keyboard). */
+    uint16_t update_period_ms;              /**< The cycle time (in ms) for the main HOGP FreeRTOS task loop. */
 } hogp_init_info_t;
 
-#endif
+#endif /* HOGP_DEFINES_H */

@@ -116,7 +116,7 @@ static const struct ble_gatt_svc_def services[] = {
 
 // Public functions
 
-hogp_error_t hogp_gap_init(void) {
+hogp_result_t hogp_gap_init(void) {
     int rc = 0;
     hogp_context_t *ctx = hogp_get_context();
 
@@ -127,19 +127,19 @@ hogp_error_t hogp_gap_init(void) {
     rc = ble_svc_gap_device_name_set(ctx->device.device_name);
     if (rc != 0) {
         ERROR("Failed to set the device name to '%s'. Got the error code %d", ctx->device.device_name, rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     rc = ble_svc_gap_device_appearance_set(ctx->device.appearance);
     if (rc != 0) {
         ERROR("Failed to set the device appearance to %d. Got the error code %d", ctx->device.appearance, rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     return HOGP_OK;
 }
 
-hogp_error_t hogp_gatt_init(void) {
+hogp_result_t hogp_gatt_init(void) {
     hogp_context_t *ctx = hogp_get_context();
     int rc = 0;
 
@@ -151,30 +151,19 @@ hogp_error_t hogp_gatt_init(void) {
     rc = ble_gatts_count_cfg(services);
     if (rc != 0) {
         ERROR("GATT services have an invalid definition. Error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     rc = ble_gatts_add_svcs(services);
     if (rc != 0) {
         ERROR("GATT services not registered. Error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
-
-    /*rc = ble_gatts_find_chr(BLE_UUID16_DECLARE(BLE_UUID_SVC_HID), BLE_UUID16_DECLARE(BLE_UUID_CHR_REPORT), NULL, &ctx->connection.handles.mouse_report);
-    if (rc != 0) {
-        ERROR("Failed to find the mouse report characteristic (svc: %d, chr: %d)", hid_service_uuid, mouse_report_uuid);
-        return rc;
-    }
-    rc = ble_gatts_find_chr((const ble_uuid_t *)&hid_service_uuid, (const ble_uuid_t *)&mouse_boot_uuid, NULL, &ctx->connection.handles.mouse_boot);
-    if (rc != 0) {
-        ERROR("Failed to find the mouse boot characteristic (svc: %d, chr: %d)", hid_service_uuid, mouse_boot_uuid);
-        return rc;
-    }*/
 
     return HOGP_OK;
 }
 
-hogp_error_t hogp_nimble_config(void) {
+hogp_result_t hogp_nimble_config(void) {
     ble_hs_cfg.reset_cb = ble_stack_reset_callback;
     ble_hs_cfg.sync_cb = ble_stack_sync_callback;
     //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; // TODO
@@ -190,7 +179,7 @@ hogp_error_t hogp_nimble_config(void) {
     return HOGP_OK;
 }
 
-hogp_error_t hogp_start_advertising(void) {
+hogp_result_t hogp_start_advertising(void) {
     int rc = 0;
     const char *name;
 
@@ -210,7 +199,7 @@ hogp_error_t hogp_start_advertising(void) {
     rc = ble_gap_adv_set_fields(&adv_fields);
     if (rc != 0) {
         ERROR("Failed to set advertising data, error core %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     name = ble_svc_gap_device_name();
@@ -221,7 +210,7 @@ hogp_error_t hogp_start_advertising(void) {
     rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
     if (rc != 0) {
         ERROR("Failed to set scan response data, error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
@@ -232,7 +221,7 @@ hogp_error_t hogp_start_advertising(void) {
     rc = ble_gap_adv_start(ctx->connection.own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event_callback, NULL);
     if (rc != 0) {
         ERROR("Start advertising failed, error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     INFO("Advertising started successfully");
@@ -240,17 +229,17 @@ hogp_error_t hogp_start_advertising(void) {
     return HOGP_OK;
 }
 
-hogp_error_t hogp_connect(uint16_t handle) {
+hogp_result_t hogp_connect(uint16_t handle) {
     hogp_context_t *ctx = hogp_get_context();
     struct ble_gap_conn_desc desc;
     int rc = ble_gap_conn_find(handle, &desc);
     if (rc != 0) {
         ERROR("Failed to find connection by handle, error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     ctx->connection.conn_handle = handle;
-    WARN("conn_handle = %d, placed at %d", ctx->connection.conn_handle, &ctx->connection.conn_handle);
+    WARN("Connection handle updated: %d (Addr location: %p)", ctx->connection.conn_handle, &ctx->connection.conn_handle);
 
     struct ble_gap_upd_params params = {
         .itvl_min = desc.conn_itvl,
@@ -262,36 +251,36 @@ hogp_error_t hogp_connect(uint16_t handle) {
     rc = ble_gap_update_params(handle, &params);
     if (rc != 0) {
         ERROR("Failed to update connection parameters, error code: %d", rc);
-        return HOGP_OPERATION_FAILED;
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
     return HOGP_OK;
 }
 
-hogp_error_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t chr) {
+hogp_result_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t chr) {
     hogp_context_t *ctx = hogp_get_context();
     struct os_mbuf *om = ble_hs_mbuf_from_flat(message, sizeof(uint8_t) * size);
     
     // Check for allocation failure
     if (om == NULL) {
-        ERROR("No memory available for mbuf");
-        return HOGP_OPERATION_FAILED;
+        ERROR("No memory available for notification mbuf (size: %d)", size);
+        return HOGP_ERR_NO_MEM;
     }
     
     // Send notification
     int rc = ble_gatts_notify_custom(ctx->connection.conn_handle, handles.values[(int)chr], om);
     
     if (rc == 0) {
-        INFO("Notification sent successfully");
+        INFO("Notification sent successfully (Type: %d)", chr);
     } else {
-        WARN("Notification send failed, error code: %d", rc);
-        //os_mbuf_free_chain(om);
-        return HOGP_OPERATION_FAILED;
+        WARN("Notification send failed. Error code: %d, Handle: %d", rc, ctx->connection.conn_handle);
+        //os_mbuf_free_chain(om); // NimBLE frees on error for notify_custom? Check API docs usually
+        return HOGP_ERR_INTERNAL_FAIL;
     }
     return HOGP_OK;
 }
 
-hogp_error_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
+hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
     hogp_context_t *ctx = hogp_get_context();
 
     int i;
@@ -300,7 +289,8 @@ hogp_error_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
     }
 
     if (i == HOGP_HANDLE_COUNT) {
-        return HOGP_OK;     // TODO is this a warning?
+        WARN("Received subscription for unknown handle: %d", handle);
+        return HOGP_OK; 
     }
 
     if (subscription_type & 1)  ctx->connection.indicate_sub.subs[i] = true;
@@ -316,12 +306,21 @@ hogp_error_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
 
 // Utility functions
 
+/**
+ * @brief  Populates the service UUIDs array in the context.
+ * * Currently sets the HID Service UUID.
+ */
 static void set_service_uuids(void) {
     hogp_context_t *ctx = hogp_get_context();
 
     ctx->connection.svc_uuids[0] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_HID);
 }
 
+/**
+ * @brief  Helper to format a raw 6-byte MAC address into a readable string.
+ * * @param  addr_str  Buffer to hold the resulting string (must be at least 18 chars).
+ * @param  addr      Array of 6 bytes representing the MAC address.
+ */
 static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
     sprintf(addr_str, "%02X:%02X:%02X:%02X:%02X:%02X", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 }
@@ -331,10 +330,20 @@ static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
 
 // NimBLE callbacks
 
+/**
+ * @brief  Callback invoked by NimBLE when the stack resets.
+ * * Log useful information for debugging (e.g., stack crash or manual reset).
+ * * @param  reason  The error code indicating why the reset occurred.
+ */
 static void ble_stack_reset_callback(int reason) {
-    ESP_LOGI(HID_TAG, "NimBLE stack reset: reason %d", reason);
+    INFO("NimBLE stack reset triggered. Reason: %d", reason);
 }
 
+/**
+ * @brief  Callback invoked when the NimBLE stack is synced and ready.
+ * * Infers the device's own address.
+ * * Sends the HOGP_CEVT_BLE_READY event to the FSM to trigger the application start.
+ */
 static void ble_stack_sync_callback(void) { // TODO refactor
     // BLE stack has been setupped, now we can setup advertising data and start advertising
     hogp_context_t *ctx = hogp_get_context();
@@ -343,33 +352,41 @@ static void ble_stack_sync_callback(void) { // TODO refactor
 
     rc = ble_hs_util_ensure_addr(0);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "device does not have any available bt address!");
+        ERROR("No available Bluetooth address found on device!");
         return;
     }
 
     rc = ble_hs_id_infer_auto(0, &ctx->connection.own_addr_type);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to infer address type, error code: %d", rc);
+        ERROR("Failed to infer address type. Error code: %d", rc);
         return;
     }
 
     rc = ble_hs_id_copy_addr(ctx->connection.own_addr_type, ctx->connection.addr_val, NULL);
     if (rc != 0) {
-        ESP_LOGE(HID_TAG, "failed to copy device address, error code: %d", rc);
+        ERROR("Failed to copy device address. Error code: %d", rc);
         return;
     }
     hogp_format_addr(addr_str, ctx->connection.addr_val);
-    ESP_LOGI(HID_TAG, "device address: %s", addr_str);
+    INFO("Device Address Synced: %s", addr_str);
 
     // Send BLE ready event
     hogp_control_event_t event;
     event.type = HOGP_CEVT_BLE_READY;
 
     if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
-        ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+        ERROR("Critical: Failed to enqueue BLE_READY event (Queue full)");
     }
 }
 
+/**
+ * @brief  The central GAP event handler.
+ * * Handles connection, disconnection, advertising completion, and subscription updates.
+ * * Translates raw BLE events into `hogp_control_event_t` for the FSM queue.
+ * * @param  event  The event structure provided by NimBLE.
+ * @param  arg    User argument (unused).
+ * @return 0 on success, or a BLE error code.
+ */
 static int gap_event_callback(struct ble_gap_event *event, void *arg) {
     int rc = 0;
     struct ble_gap_conn_desc desc;
@@ -379,14 +396,15 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
     switch (event->type) {
 
     case BLE_GAP_EVENT_CONNECT:
-        ESP_LOGI(HID_TAG, "connection %s; status=%d",
+        INFO("Connection attempt %s; Status=%d, Handle=%d",
                  event->connect.status == 0 ? "established" : "failed",
-                 event->connect.status);
+                 event->connect.status,
+                 event->connect.conn_handle);
 
         if(event->connect.status == 0) {
             rc = ble_gap_conn_find(event->connect.conn_handle, &desc);
             if (rc != 0) {
-                ESP_LOGE(HID_TAG, "failed to find connection by handle, error code: %d", rc);
+                ERROR("Failed to find connection descriptor by handle. Error code: %d", rc);
                 return rc;
             }
 
@@ -394,40 +412,40 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
             e.type = HOGP_CEVT_CONNECT;
             e.conn_handle = event->connect.conn_handle;
             if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-                ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+                ERROR("Failed to enqueue CONNECT event (Queue full)");
                 return -1;
             }
         }
         return rc;
 
     case BLE_GAP_EVENT_DISCONNECT:
-        ESP_LOGI(HID_TAG, "disconnected from peer; reason=%d", event->disconnect.reason);
+        INFO("Disconnected from peer. Reason=%d", event->disconnect.reason);
 
         e.type = HOGP_CEVT_DISCONNECT;
         if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-            ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+            ERROR("Failed to enqueue DISCONNECT event (Queue full)");
             return -1;
         }
         
         return rc;
 
     case BLE_GAP_EVENT_CONN_UPDATE:
-        ESP_LOGI(HID_TAG, "connection updated; status=%d", event->conn_update.status);
+        INFO("Connection parameters updated. Status=%d", event->conn_update.status);
 
         rc = ble_gap_conn_find(event->conn_update.conn_handle, &desc);  // TODO handle in the FSM or remove
         if (rc != 0) {
-            ESP_LOGE(HID_TAG, "failed to find connection by handle, error code: %d", rc);
+            ERROR("Failed to find connection descriptor after update. Error code: %d", rc);
             return rc;
         }
 
         return rc;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        ESP_LOGI(HID_TAG, "advertise complete; reason=%d", event->adv_complete.reason);
+        INFO("Advertising completed/stopped. Reason=%d", event->adv_complete.reason);
 
         e.type = HOGP_CEVT_ADV_COMPLETE;
         if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-            ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+            ERROR("Failed to enqueue ADV_COMPLETE event (Queue full)");
             return -1;
         }
         return rc;
@@ -436,15 +454,14 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         if (event->notify_tx.status == 0) {
             e.type = HOGP_CEVT_NOTIFY_TX;
             if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-                ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+                ERROR("Failed to enqueue NOTIFY_TX event (Queue full)");
                 return -1;
             }
         }
         return rc;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
-        ESP_LOGI(HID_TAG,
-                 "subscribe event; conn_handle=%d attr_handle=%d reason=%d prevn=%d curn=%d previ=%d curi=%d",
+        INFO("Subscribe event: Handle=%d, Attr=%d, Reason=%d. Notify: %d->%d, Indicate: %d->%d",
                  event->subscribe.conn_handle, event->subscribe.attr_handle,
                  event->subscribe.reason, event->subscribe.prev_notify,
                  event->subscribe.cur_notify, event->subscribe.prev_indicate,
@@ -456,20 +473,20 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
         if (event->subscribe.cur_indicate != 0) e.sub |= 1;
         if (event->subscribe.cur_notify != 0)   e.sub |= 2;
         if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-            ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+            ERROR("Failed to enqueue SUBSCRIBE event (Queue full)");
             return -1;
         }
 
         return rc;
 
     case BLE_GAP_EVENT_MTU:
-        ESP_LOGI(HID_TAG, "mtu update event; conn_handle=%d cid=%d mtu=%d",
+        INFO("MTU Update: Handle=%d, Channel=%d, New MTU=%d",
                  event->mtu.conn_handle, event->mtu.channel_id, event->mtu.value);
         
         e.type = HOGP_CEVT_MTU;
         e.mtu = event->mtu.value;
         if (xQueueSendToBackFromISR(ctx->control_queue, &e, 0) != pdPASS) {
-            ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+            ERROR("Failed to enqueue MTU event (Queue full)");
             return -1;
         }
 
@@ -487,9 +504,9 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg) {
 static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
     hogp_context_t *ctx = hogp_get_context();
 
-    ESP_LOGI(HID_TAG, "hid info callback");
+    INFO("HID Info characteristic read request received");
     if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
-        ESP_LOGI(HID_TAG, "Connection %d tried to perform the operation %d, which is not allowed", conn_handle, ctxt->op);
+        WARN("Invalid operation %d on HID Info characteristic (Conn: %d)", ctxt->op, conn_handle);
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
     }
 
@@ -500,13 +517,13 @@ static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct
     //    [3]: Flags (0x02 for Normally Connectable)
     const uint8_t hid_info[4] = { HOGP_USB_VERSION_MINOR_BCD, HOGP_USB_VERSION_MAJOR_BCD, 0x00, 0x02 };
     int rc = os_mbuf_append(ctxt->om, hid_info, sizeof(hid_info));
-    ESP_LOGI(HID_TAG, "hid info response returned: %d", rc);
+    INFO("HID Info response appended. Result: %d", rc);
     return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
 static int hid_control_point_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
     hogp_context_t *ctx = hogp_get_context();
-    ESP_LOGI(HID_TAG, "hid control point callback");
+    INFO("HID Control Point write request received");
     
     int rc;
     uint8_t command;
@@ -533,11 +550,12 @@ static int hid_control_point_access_cb(uint16_t conn_handle, uint16_t attr_handl
         event.suspended = false;
     } 
     else {
+        WARN("Invalid HID Control Point command: 0x%02X", command);
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
     }
     
     if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
-        ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+        ERROR("Failed to enqueue SUSPEND event (Queue full)");
         return -1;
     }
 
@@ -549,7 +567,7 @@ static int hid_protocol_mode_access_cb(uint16_t conn_handle, uint16_t attr_handl
     int rc;
     uint8_t command;
 
-    ESP_LOGI(HID_TAG, "protocol mode callback");
+    INFO("Protocol Mode characteristic access request received");
 
     if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
         if (OS_MBUF_PKTLEN(ctxt->om) != 1)  return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
@@ -567,14 +585,14 @@ static int hid_protocol_mode_access_cb(uint16_t conn_handle, uint16_t attr_handl
         }
 
         if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
-            ESP_LOGE(HID_TAG, "ERROR: waited too much to add the control event in the queue");
+            ERROR("Failed to enqueue SET_PROTOCOL event (Queue full)");
             return -1;
         }
 
         return 0;
     }
     else if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-        ESP_LOGI(HID_TAG, "protocol set");
+        INFO("Protocol Mode read. Current protocol: %s", ctx->connection.protocol == HOGP_PROTOCOL_REPORT ? "Report" : "Boot");
         // set 0x00 for boot and 0x01 for report protocol
         command = ctx->connection.protocol == HOGP_PROTOCOL_REPORT ? 0x01 : 0x00;
         const uint8_t hid_info[1] = { command };
@@ -585,7 +603,7 @@ static int hid_protocol_mode_access_cb(uint16_t conn_handle, uint16_t attr_handl
 }
 
 static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    ESP_LOGI(HID_TAG, "Reading Report Map");
+    INFO("HID Report Map read request received");
     
     static const uint8_t hid_report_map[] = {
         0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)

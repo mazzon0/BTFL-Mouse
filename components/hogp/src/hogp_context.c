@@ -4,11 +4,19 @@
 #include "hogp_control_events.h"
 #include <string.h>
 
-int hogp_context_init(const hogp_init_info_t *init_info) {
-    int rc = 0;
+hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     hogp_context_t *ctx = hogp_get_context();
     
     // TODO check init_info and also check device name length
+    if (init_info == NULL) {
+        ERROR("Failed to initialize context: init_info argument is NULL");
+        return HOGP_ERR_INVALID_ARG;
+    }
+
+    INFO("Initializing HOGP context. Device Name: '%s', Appearance: 0x%04X, Period: %dms", 
+         init_info->device_data.device_name, 
+         init_info->device_data.appearance,
+         init_info->update_period_ms);
 
     ctx->connection = (hogp_conn_t) {0};
     ctx->connection.mtu = 23;
@@ -20,18 +28,40 @@ int hogp_context_init(const hogp_init_info_t *init_info) {
     ctx->update_period_ms = init_info->update_period_ms;
 
     ctx->control_queue = xQueueCreate(16, sizeof(hogp_control_event_t));
-    ctx->data_queue = xQueueCreate(32, sizeof(hogp_data_event_t));
+    if (ctx->control_queue == NULL) {
+        ERROR("Failed to create control queue (Out of memory)");
+        return HOGP_ERR_NO_MEM;
+    }
 
-    return rc;
+    ctx->data_queue = xQueueCreate(32, sizeof(hogp_data_event_t));
+    if (ctx->data_queue == NULL) {
+        ERROR("Failed to create data queue (Out of memory)");
+        // Clean up the previously created queue
+        vQueueDelete(ctx->control_queue);
+        ctx->control_queue = NULL;
+        return HOGP_ERR_NO_MEM;
+    }
+
+    INFO("Context initialized successfully");
+    return HOGP_OK;
 }
 
-int hogp_context_shutdown(void) {
-    int rc = 0;
+hogp_result_t hogp_context_shutdown(void) {
     hogp_context_t *ctx = hogp_get_context();
+    INFO("Shutting down HOGP context");
 
-    vQueueDelete(ctx->control_queue);
-    vQueueDelete(ctx->data_queue);
+    if (ctx->control_queue != NULL) {
+        vQueueDelete(ctx->control_queue);
+        ctx->control_queue = NULL;
+    }
+    
+    if (ctx->data_queue != NULL) {
+        vQueueDelete(ctx->data_queue);
+        ctx->data_queue = NULL;
+    }
 
     *ctx = (hogp_context_t) {0};
-    return rc;
+    
+    INFO("Context shutdown complete");
+    return HOGP_OK;
 }
