@@ -308,7 +308,7 @@ hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
 
 /**
  * @brief  Populates the service UUIDs array in the context.
- * * Currently sets the HID Service UUID.
+ * Currently sets the HID Service UUID.
  */
 static void set_service_uuids(void) {
     hogp_context_t *ctx = hogp_get_context();
@@ -318,7 +318,7 @@ static void set_service_uuids(void) {
 
 /**
  * @brief  Helper to format a raw 6-byte MAC address into a readable string.
- * * @param  addr_str  Buffer to hold the resulting string (must be at least 18 chars).
+ * @param  addr_str  Buffer to hold the resulting string (must be at least 18 chars).
  * @param  addr      Array of 6 bytes representing the MAC address.
  */
 static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
@@ -332,8 +332,8 @@ static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
 
 /**
  * @brief  Callback invoked by NimBLE when the stack resets.
- * * Log useful information for debugging (e.g., stack crash or manual reset).
- * * @param  reason  The error code indicating why the reset occurred.
+ * Log useful information for debugging (e.g., stack crash or manual reset).
+ * @param  reason  The error code indicating why the reset occurred.
  */
 static void ble_stack_reset_callback(int reason) {
     INFO("NimBLE stack reset triggered. Reason: %d", reason);
@@ -341,8 +341,8 @@ static void ble_stack_reset_callback(int reason) {
 
 /**
  * @brief  Callback invoked when the NimBLE stack is synced and ready.
- * * Infers the device's own address.
- * * Sends the HOGP_CEVT_BLE_READY event to the FSM to trigger the application start.
+ * Infers the device's own address.
+ * Sends the HOGP_CEVT_BLE_READY event to the FSM to trigger the application start.
  */
 static void ble_stack_sync_callback(void) { // TODO refactor
     // BLE stack has been setupped, now we can setup advertising data and start advertising
@@ -381,9 +381,9 @@ static void ble_stack_sync_callback(void) { // TODO refactor
 
 /**
  * @brief  The central GAP event handler.
- * * Handles connection, disconnection, advertising completion, and subscription updates.
- * * Translates raw BLE events into `hogp_control_event_t` for the FSM queue.
- * * @param  event  The event structure provided by NimBLE.
+ * Handles connection, disconnection, advertising completion, and subscription updates.
+ * Translates raw BLE events into `hogp_control_event_t` for the FSM queue.
+ * @param  event  The event structure provided by NimBLE.
  * @param  arg    User argument (unused).
  * @return 0 on success, or a BLE error code.
  */

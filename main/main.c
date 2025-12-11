@@ -1,5 +1,7 @@
 #include "hogp.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+
 
 void app_main(void) {
     hogp_init_info_t hogp_init_info = {
@@ -17,10 +19,14 @@ void app_main(void) {
     event.x = 16;
     event.y = 16;
 
-    for (int i = 0; i < 128; i++) {
+    for (int i = 0; i < 40; i++) {
         hogp_send_data(&event);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
+    ESP_LOGI("main", "finmishing");
+
     hogp_shutdown();
+
+    ESP_LOGI("main", "finidhed");
 }

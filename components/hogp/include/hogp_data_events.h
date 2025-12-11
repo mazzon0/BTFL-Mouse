@@ -4,7 +4,7 @@
 
 /**
  * @brief Enumeration of data event types.
- * * These events represent user interactions (mouse movement, clicks, scrolls) 
+ * These events represent user interactions (mouse movement, clicks, scrolls) 
  * that need to be transmitted to the host.
  */
 typedef enum {
@@ -16,7 +16,7 @@ typedef enum {
 
 /**
  * @brief Structure representing a data event.
- * * Carries the specific payload (coordinates, button ID) corresponding to the event type.
+ * Carries the specific payload (coordinates, button ID) corresponding to the event type.
  */
 typedef struct {
     hogp_data_event_type_t type; /**< The type of the data event. */
@@ -24,7 +24,7 @@ typedef struct {
     union {
         /**
          * @brief Payload for cursor and scroll motion events.
-         * * Used by HOGP_DEVT_CURSOR_MOTION and HOGP_DEVT_SCROLL_MOTION.
+         * Used by HOGP_DEVT_CURSOR_MOTION and HOGP_DEVT_SCROLL_MOTION.
          */
         struct {
             uint16_t x; /**< Relative X movement or Horizontal scroll value. */
@@ -33,8 +33,8 @@ typedef struct {
 
         /**
          * @brief Payload for button events.
-         * * Used by HOGP_DEVT_MOUSE_BUTTON_PRESSED and HOGP_DEVT_MOUSE_BUTTON_RELEASED.
-         * * 1 = Left, 2 = Right, 3 = Middle, etc.
+         * Used by HOGP_DEVT_MOUSE_BUTTON_PRESSED and HOGP_DEVT_MOUSE_BUTTON_RELEASED.
+         * 1 = Left, 2 = Right, 3 = Middle, etc.
          */
         uint16_t button;
     };

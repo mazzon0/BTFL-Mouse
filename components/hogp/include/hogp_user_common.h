@@ -19,7 +19,7 @@
 
 /**
  * @brief Configuration data defining the device's appearance and name.
- * * This struct holds the static information presented to the host during scanning.
+ * This struct holds the static information presented to the host during scanning.
  */
 typedef struct {
     char device_name[HOGP_DEVICE_NAME_MAX_CHARACTERS]; /**< The name advertised over BLE. */
@@ -28,7 +28,7 @@ typedef struct {
 
 /**
  * @brief Initialization information structure.
- * * Passed to `hogp_setup` or `hogp_context_init` to configure the library on startup.
+ * Passed to `hogp_setup` or `hogp_context_init` to configure the library on startup.
  */
 typedef struct {
     hogp_device_data_t device_data;         /**< Device appearance settings (name, category like Mouse/Keyboard). */

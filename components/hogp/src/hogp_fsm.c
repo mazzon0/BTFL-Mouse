@@ -13,9 +13,12 @@ static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data
 
 // Task
 
+static TaskHandle_t task = NULL;
+
 void hogp_task(void *params) {
     bool running = true;
     hogp_context_t *ctx = hogp_get_context();
+    task = xTaskGetCurrentTaskHandle();
 
     INFO("HOGP task started");
 
@@ -69,6 +72,11 @@ void hogp_task(void *params) {
                     WARN("write_message returned the unexpected value %d", ret); 
                 }
                 break;
+            
+            case HOGP_STATE_ADVERTISING:
+            case HOGP_STATE_SUSPENDED:
+                xQueueReset(ctx->data_queue);
+                break;
 
             default:
                 //WARN("Unhandled state %d", ctx->state);
@@ -81,16 +89,20 @@ void hogp_task(void *params) {
     vTaskDelete(NULL);
 }
 
+bool hogp_is_running(void) {
+    return eTaskGetState(task) != eDeleted;
+}
+
 
 // Utility functions
 
 /**
  * @brief Processes the control event queue to update the FSM state.
- * * Reads from the `control_queue` (non-blocking).
- * * Switches based on the current `ctx->state` and the received event.
- * * Handles state transitions (e.g., IDLE -> START, CONNECTED -> SUSPENDED).
- * * Processes events that don't change state but update context (e.g., MTU update, Protocol change).
- * * @param ctx Pointer to the global HOGP context.
+ * Reads from the `control_queue` (non-blocking).
+ * Switches based on the current `ctx->state` and the received event.
+ * Handles state transitions (e.g., IDLE -> START, CONNECTED -> SUSPENDED).
+ * Processes events that don't change state but update context (e.g., MTU update, Protocol change).
+ * @param ctx Pointer to the global HOGP context.
  * @return HOGP_OK on success.
  * @return HOGP_ERR_QUEUE_EMPTY if no events are pending.
  */
@@ -200,10 +212,10 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
 
 /**
  * @brief Prepares a HID report message based on the active protocol.
- * * Checks if the transport is ready (Flow control: `tx_arrived`).
- * * Reads user inputs (mouse/keyboard events) from the `data_queue`.
- * * Dispatches the event to the correct formatter (Report Mode vs Boot Mode).
- * * @param message Buffer to store the formatted report data.
+ * Checks if the transport is ready (Flow control: `tx_arrived`).
+ * Reads user inputs (mouse/keyboard events) from the `data_queue`.
+ * Dispatches the event to the correct formatter (Report Mode vs Boot Mode).
+ * @param message Buffer to store the formatted report data.
  * @param size Pointer to store the size of the generated report.
  * @param protocol The current active protocol (Report or Boot).
  * @return HOGP_OK on success.
@@ -246,10 +258,10 @@ static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_protoco
 
 /**
  * @brief Formats a data event into a standard Mouse HID Report.
- * * Uses the Report Map defined in `hogp_ble.c`.
- * * Mapping: [Buttons, X, Y, Wheel].
- * * Checks if the host has subscribed to notifications before formatting.
- * * @param message Buffer to write the 4-byte report into.
+ * Uses the Report Map defined in `hogp_ble.c`.
+ * Mapping: [Buttons, X, Y, Wheel].
+ * Checks if the host has subscribed to notifications before formatting.
+ * @param message Buffer to write the 4-byte report into.
  * @param size Pointer to write the size (4 bytes).
  * @param event The data event (button press, motion, etc.) to convert.
  * @return HOGP_OK on success.

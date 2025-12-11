@@ -3,6 +3,7 @@
 #include "hogp_ble.h"
 #include "hogp_context.h"
 #include "hogp_fsm.h"
+#include "hogp_control_events.h"
 
 // NimBLE task
 static void nimble_run_task(void *param);
@@ -54,8 +55,21 @@ hogp_result_t hogp_setup(const hogp_init_info_t *const init_info) {
 }
 
 hogp_result_t hogp_shutdown(void) {
-    // TODO stop HOGP task
-    // handle the case if the task do not delete itself
+    // TODO handle the case if the task do not delete itself
+    hogp_context_t *ctx = hogp_get_context();
+
+    hogp_control_event_t event;
+    event.type = HOGP_CEVT_SHUTDOWN;
+
+    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
+        ERROR("Failed to enqueue shutdown event");
+        return HOGP_ERR_QUEUE_FULL;
+    }
+
+    while (hogp_is_running()) { // TODO return error after too many iterations
+        // Sleep for 10ms then check again
+        vTaskDelay(pdMS_TO_TICKS(10)); 
+    }
 
     hogp_context_shutdown();
     return HOGP_OK;
@@ -73,9 +87,9 @@ hogp_result_t hogp_send_data(const hogp_data_event_t *event) {
 
 /**
  * @brief FreeRTOS task entry point for the NimBLE stack.
- * * Calls `nimble_port_run()` which blocks indefinitely, processing BLE events.
- * * This task is created in `hogp_setup()`.
- * * @param param Unused task parameter.
+ * Calls `nimble_port_run()` which blocks indefinitely, processing BLE events.
+ * This task is created in `hogp_setup()`.
+ * @param param Unused task parameter.
  */
 static void nimble_run_task(void *param) {
     INFO("Nimble run task has been started");

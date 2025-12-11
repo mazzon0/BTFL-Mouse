@@ -3,7 +3,7 @@
 
 /**
  * @brief Return types for HOGP operations.
- * * Renamed from hogp_error_t to hogp_result_t to reflect that it can 
+ * Renamed from hogp_error_t to hogp_result_t to reflect that it can 
  * carry status information beyond just "errors".
  */
 typedef enum {

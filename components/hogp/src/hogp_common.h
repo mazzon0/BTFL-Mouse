@@ -50,7 +50,7 @@
 
 /**
  * @brief  Structure holding the attribute handles for HOGP characteristics.
- * * This union allows accessing handles either by index (for iteration) 
+ * This union allows accessing handles either by index (for iteration) 
  * or by name (for specific logic).
  */
 typedef union {
@@ -68,8 +68,8 @@ _Static_assert(sizeof(hogp_handles_t) == (HOGP_HANDLE_COUNT * sizeof(uint16_t)),
 
 /**
  * @brief  Union representing subscription status for characteristics.
- * * Tracks which characteristics the host has enabled notifications/indications for.
- * * Accessible as a boolean array or named bit-fields.
+ * Tracks which characteristics the host has enabled notifications/indications for.
+ * Accessible as a boolean array or named bit-fields.
  */
 typedef union { // TODO optimize booleans to single bits
     bool subs[HOGP_HANDLE_COUNT]; /**< Array access to subscription flags. */
@@ -84,7 +84,7 @@ typedef union { // TODO optimize booleans to single bits
 
 /**
  * @brief  HOGP Protocol Modes.
- * * Defined by the HID over GATT Profile.
+ * Defined by the HID over GATT Profile.
  */
 typedef enum {
     HOGP_PROTOCOL_BOOT,   /**< Boot Protocol Mode (Simplified report format). */
@@ -93,7 +93,7 @@ typedef enum {
 
 /**
  * @brief  Active connection context.
- * * Stores all dynamic state related to the current BLE connection.
+ * Stores all dynamic state related to the current BLE connection.
  */
 typedef struct {
     ble_uuid16_t svc_uuids[HOGP_NUM_SERVICES]; /**< UUIDs of the advertised services. */
@@ -113,7 +113,7 @@ typedef struct {
 
 /**
  * @brief  Device configuration data.
- * * Static configuration usually loaded from init structure.
+ * Static configuration usually loaded from init structure.
  */
 typedef struct {
     char device_name[32];    /**< The name advertised by the device. */
@@ -134,7 +134,7 @@ typedef enum {
 
 /**
  * @brief  Global HOGP Context.
- * * The central singleton structure holding the entire state of the application.
+ * The central singleton structure holding the entire state of the application.
  */
 typedef struct {
     hogp_conn_t connection;        /**< Active connection state. */
@@ -148,8 +148,8 @@ typedef struct {
 
 /**
  * @brief  Retrieves the global HOGP context.
- * * Implemented as a singleton pattern.
- * * @return Pointer to the static `hogp_context_t` instance.
+ * Implemented as a singleton pattern.
+ * @return Pointer to the static `hogp_context_t` instance.
  */
 hogp_context_t *hogp_get_context(void);
 
