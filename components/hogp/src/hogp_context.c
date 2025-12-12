@@ -26,6 +26,7 @@ hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     strcpy(ctx->device.device_name, init_info->device_data.device_name);
     ctx->state = HOGP_STATE_IDLE;
     ctx->update_period_ms = init_info->update_period_ms;
+    ctx->hid_state.buttons = 0x00;
 
     ctx->control_queue = xQueueCreate(16, sizeof(hogp_control_event_t));
     if (ctx->control_queue == NULL) {

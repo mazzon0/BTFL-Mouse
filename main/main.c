@@ -19,14 +19,27 @@ void app_main(void) {
     event.x = 16;
     event.y = 16;
 
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < 64; i++) {
         hogp_send_data(&event);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
-    ESP_LOGI("main", "finmishing");
+    /*for (int i = 0; i < 64; i++) {
+        hogp_data_event_t event = {0};
+        event.type = HOGP_DEVT_MOUSE_BUTTON_PRESSED;
+        event.button = 2;
+        hogp_send_data(&event);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+        event.type = HOGP_DEVT_MOUSE_BUTTON_RELEASED;
+        event.button = 2;
+        hogp_send_data(&event);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }*/
+
+    ESP_LOGI("main", "finishing");
 
     hogp_shutdown();
 
-    ESP_LOGI("main", "finidhed");
+    ESP_LOGI("main", "finished");
 }

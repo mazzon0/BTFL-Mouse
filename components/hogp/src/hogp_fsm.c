@@ -291,14 +291,18 @@ static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_da
             break;
 
         case HOGP_DEVT_MOUSE_BUTTON_PRESSED:
-            message[0] = 0x00;
+            ctx->hid_state.buttons |= (1 << event->button);
+
+            message[0] = ctx->hid_state.buttons;
             message[1] = 0;
             message[2] = 0;
             message[3] = 0;
             break;
 
         case HOGP_DEVT_MOUSE_BUTTON_RELEASED:
-            message[0] = 0x00;
+            ctx->hid_state.buttons &= ~(1 << event->button);
+
+            message[0] = ctx->hid_state.buttons;
             message[1] = 0;
             message[2] = 0;
             message[3] = 0;

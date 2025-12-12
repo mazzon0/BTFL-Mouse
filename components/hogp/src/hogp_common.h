@@ -43,10 +43,10 @@
              FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
 
 /** @brief Total number of services exposed by the GATT server. */
-#define HOGP_NUM_SERVICES 2  // HID Service, Battery Service (future use)
+#define HOGP_NUM_SERVICES 2  // HID Service, Device Information Service (TODO battery service)
 
 /** @brief Total number of characteristics handles tracked. */
-#define HOGP_HANDLE_COUNT 4  // Report, Boot Mouse, Keyboard (future), Battery (future)
+#define HOGP_HANDLE_COUNT 3  // Report, Boot Mouse, Keyboard (future), Battery (future)
 
 /**
  * @brief  Structure holding the attribute handles for HOGP characteristics.
@@ -59,26 +59,22 @@ typedef union {
     struct {
         uint16_t mouse_report;      /**< Handle for the Mouse Input Report. */
         uint16_t mouse_boot;        /**< Handle for the Mouse Boot Report. */
-        uint16_t keyboard_report;   /**< Handle for the Keyboard Input Report (reserved). */
-        uint16_t battery_level;     /**< Handle for the Battery Level (reserved). */
+        uint16_t control_point;     /**< Handle for the HID Control Point. */
     };
 } hogp_handles_t;
 
-_Static_assert(sizeof(hogp_handles_t) == (HOGP_HANDLE_COUNT * sizeof(uint16_t)), "hogp_sub_t can store up to 16 handles, but HOGP_HANDLE_COUNT has been defined higher");
-
 /**
- * @brief  Union representing subscription status for characteristics.
+ * @brief Union representing subscription status for characteristics.
  * Tracks which characteristics the host has enabled notifications/indications for.
  * Accessible as a boolean array or named bit-fields.
  */
 typedef union { // TODO optimize booleans to single bits
     bool subs[HOGP_HANDLE_COUNT]; /**< Array access to subscription flags. */
 
-    struct {
+    struct {    // this struct should respect the hogp_handles_t anonymous struct
         bool mouse_report;    /**< True if Mouse Report notifications are enabled. */
         bool mouse_boot;      /**< True if Mouse Boot notifications are enabled. */
-        bool keyboard_report; /**< True if Keyboard notifications are enabled. */
-        bool battery_level;   /**< True if Battery Level notifications are enabled. */
+        bool control_point; /**< True if Keyboard notifications are enabled. */
     };
 } hogp_sub_t;
 
@@ -112,16 +108,16 @@ typedef struct {
 } hogp_conn_t;
 
 /**
- * @brief  Device configuration data.
+ * @brief Device configuration data.
  * Static configuration usually loaded from init structure.
  */
 typedef struct {
     char device_name[32];    /**< The name advertised by the device. */
-    uint16_t appearance;     /**< The BLE appearance value (e.g., 962 for Mouse). */
+    uint16_t appearance;     /**< The BLE appearance value (see include/hogp_user_common.h) */
 } hogp_device_t;
 
 /**
- * @brief  Finite State Machine (FSM) states.
+ * @brief Finite State Machine (FSM) states.
  */
 typedef enum {
     HOGP_STATE_IDLE,         /**< Initial state, waiting for stack init. */
@@ -131,6 +127,13 @@ typedef enum {
     HOGP_STATE_SUSPENDED,    /**< Host requested suspend (low power mode). */
     HOGP_STATE_CLOSED        /**< Application is shutting down. */
 } hogp_state_t;
+
+/**
+ * @brief Stores the HID data with a current state (for example keys and buttons)
+ */
+typedef struct {
+    uint8_t buttons;        /**< State of the buttons (1 pressed, 0 not pressed) */
+} hogp_hid_state_t;
 
 /**
  * @brief  Global HOGP Context.
@@ -143,6 +146,7 @@ typedef struct {
     QueueHandle_t control_queue;   /**< Queue for internal control events (connect, disconnect). */
     QueueHandle_t data_queue;      /**< Queue for user data events (mouse motion, clicks). */
     uint32_t update_period_ms;     /**< Main task loop delay in milliseconds. */
+    hogp_hid_state_t hid_state;    /**< Current HID state */
 } hogp_context_t;
 
 

@@ -9,21 +9,25 @@
 
 // UUIDs from the SIG Assigned Numbers
 #define BLE_UUID_SVC_HID                        0x1812
+#define BLE_UUID_SVC_DEVINFO                    0x180A
 #define BLE_UUID_CHR_HID_INFORMATION            0x2A4A
 #define BLE_UUID_CHR_REPORT_MAP                 0x2A4B
 #define BLE_UUID_CHR_HID_CONTROL_POINT          0x2A4C
 #define BLE_UUID_CHR_REPORT                     0x2A4D
 #define BLE_UUID_CHR_PROTOCOL_MODE              0x2A4E
 #define BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT    0x2A33
+#define BLE_UUID_CHR_PNP_ID                     0x2A50
 #define BLE_UUID_DSC_REPORT_REF                 0x2908
 
 const ble_uuid16_t hid_service_uuid = BLE_UUID16_INIT(BLE_UUID_SVC_HID);
+const ble_uuid16_t device_info_service_uuid = BLE_UUID16_INIT(BLE_UUID_SVC_DEVINFO);
 const ble_uuid16_t hid_info_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_HID_INFORMATION);
 const ble_uuid16_t report_map_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_REPORT_MAP);
 const ble_uuid16_t hid_control_point_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_HID_CONTROL_POINT);
 const ble_uuid16_t protocol_mode_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_PROTOCOL_MODE);
 const ble_uuid16_t mouse_report_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_REPORT);
 const ble_uuid16_t mouse_boot_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT);
+const ble_uuid16_t pnp_id_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_PNP_ID);
 const ble_uuid16_t report_ref_mouse_in_uuid = BLE_UUID16_INIT(BLE_UUID_DSC_REPORT_REF);
 
 hogp_handles_t handles;     // handles for the ble definitions
@@ -50,10 +54,12 @@ static int hid_protocol_mode_access_cb(uint16_t conn_handle, uint16_t attr_handl
 static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_report_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_boot_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int pnp_id_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_report_ref_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 // Services definition
 static const struct ble_gatt_svc_def services[] = {
+    // HID Service
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = (const ble_uuid_t *) &hid_service_uuid,
@@ -69,6 +75,7 @@ static const struct ble_gatt_svc_def services[] = {
                 .uuid = (const ble_uuid_t *) &hid_control_point_uuid,
                 .access_cb = hid_control_point_access_cb,
                 .flags = BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC,
+                .val_handle = &handles.control_point,
             },
             // Protocol Mode
             {
@@ -107,6 +114,22 @@ static const struct ble_gatt_svc_def services[] = {
             // End of characteristics
             { 0 }
         },
+    },
+    // Device Information Service
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = (const ble_uuid_t *) &device_info_service_uuid,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            // PnP ID
+            {
+                .uuid = (const ble_uuid_t *) &pnp_id_uuid,
+                .access_cb = pnp_id_access_cb,
+                .flags = BLE_GATT_CHR_F_READ,
+            },
+            {
+                0
+            }
+        }
     },
     {
         0
@@ -239,7 +262,7 @@ hogp_result_t hogp_connect(uint16_t handle) {
     }
 
     ctx->connection.conn_handle = handle;
-    WARN("Connection handle updated: %d (Addr location: %p)", ctx->connection.conn_handle, &ctx->connection.conn_handle);
+    INFO("Connection handle updated: %d", ctx->connection.conn_handle);
 
     struct ble_gap_upd_params params = {
         .itvl_min = desc.conn_itvl,
@@ -307,19 +330,20 @@ hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
 // Utility functions
 
 /**
- * @brief  Populates the service UUIDs array in the context.
+ * @brief Populates the service UUIDs array in the context.
  * Currently sets the HID Service UUID.
  */
 static void set_service_uuids(void) {
     hogp_context_t *ctx = hogp_get_context();
 
     ctx->connection.svc_uuids[0] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_HID);
+    ctx->connection.svc_uuids[1] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_DEVINFO);
 }
 
 /**
- * @brief  Helper to format a raw 6-byte MAC address into a readable string.
- * @param  addr_str  Buffer to hold the resulting string (must be at least 18 chars).
- * @param  addr      Array of 6 bytes representing the MAC address.
+ * @brief Helper to format a raw 6-byte MAC address into a readable string.
+ * @param addr_str Buffer to hold the resulting string (must be at least 18 chars).
+ * @param addr Array of 6 bytes representing the MAC address.
  */
 static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
     sprintf(addr_str, "%02X:%02X:%02X:%02X:%02X:%02X", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
@@ -517,7 +541,7 @@ static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct
     //    [3]: Flags (0x02 for Normally Connectable)
     const uint8_t hid_info[4] = { HOGP_USB_VERSION_MINOR_BCD, HOGP_USB_VERSION_MAJOR_BCD, 0x00, 0x02 };
     int rc = os_mbuf_append(ctxt->om, hid_info, sizeof(hid_info));
-    INFO("HID Info response appended. Result: %d", rc);
+    if (rc != 0) { WARN("HID Info response appended. Unsuccessfull: %d", rc); }
     return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
@@ -647,13 +671,62 @@ static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, 
 }
 
 static int hid_report_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    return 0;
+    hogp_context_t *ctx = hogp_get_context();
+
+    INFO("Mouse Report characteristic read request received");
+    if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+        WARN("Invalid operation %d on mouse report characteristic (Conn: %d)", ctxt->op, conn_handle);
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+
+    // Mouse report structure (4 bytes)
+    //    [0]: buttons
+    //    [1]: cursor motion x
+    //    [2]: cursor motion y
+    //    [3]: scroll motion y
+    const uint8_t hid_info[4] = { ctx->hid_state.buttons, 0, 0, 0 };
+    int rc = os_mbuf_append(ctxt->om, hid_info, sizeof(hid_info));
+    if (rc != 0) { WARN("Mouse Report response appended. Unsuccessfull: %d", rc); }
+    return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
 static int hid_boot_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    WARN("Tried to access the mouse boot report (not implemented)");
+    return 0;
+}
+
+static int pnp_id_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    hogp_context_t *ctx = hogp_get_context();
+
+    INFO("Plug and Play ID characteristic read request received");
+    if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+        WARN("Invalid operation %d on mouse report characteristic (Conn: %d)", ctxt->op, conn_handle);
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+
+    // Mouse report structure (7 bytes)
+    //    [0]: vendor source id
+    //    [1]: vendor id (msb)
+    //    [2]: vendor id (lsb)
+    //    [3]: product id (msb)
+    //    [4]: product id (lsb)
+    //    [5]: version id (msb)
+    //    [6]: version id (lsb)
+    const uint8_t hid_info[7] = { 0x01, 0xFF, 0xFF, 0x00, 0x01, 0x00, 0x01 };   // SIG ID, None, Product 1, Version 0.0.1
+    int rc = os_mbuf_append(ctxt->om, hid_info, sizeof(hid_info));
+    if (rc != 0) { WARN("Mouse Report response appended. Unsuccessfull: %d", rc); }
+    return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     return 0;
 }
 
 static int hid_report_ref_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    return 0;
+    uint8_t hid_report_reference[2] = { 0x01, 0x01 };
+    INFO("Mouse Report reference descriptor read request received");
+
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_DSC) {
+        int rc = os_mbuf_append(ctxt->om, hid_report_reference, sizeof(hid_report_reference));
+        return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
+    return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
 }
