@@ -12,6 +12,7 @@
  */
 
 #include "pmw3389.h"
+#include "pmw3389_srom.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
@@ -245,6 +246,160 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     return ESP_OK;
 }
 
+
+esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data) {
+    if (!handle || !data) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
+    uint8_t tx_data[2] = {addr & 0x7F, 0x00};
+    uint8_t rx_data[2] = {0};
+
+    spi_transaction_t trans = {
+        .length = 16,
+        .tx_buffer = tx_data,
+        .rx_buffer = rx_data,
+        .user = NULL,
+    };
+
+    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register read error 0x%02X: %s", addr, esp_err_to_name(ret));
+        return ret;
+    }
+
+    *data = rx_data[1];
+    delay_us(PMW3389_TSRR);
+    
+    return ESP_OK;
+}
+
+esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data) {
+
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
+    uint8_t tx_data[2] = {addr | 0x80, data};
+
+    spi_transaction_t trans = {
+        .length = 16,
+        .tx_buffer = tx_data,
+        .rx_buffer = NULL,
+        .user = NULL,
+    };
+
+    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Register write error 0x%02X: %s", addr, esp_err_to_name(ret));
+        return ret;
+    }
+
+    delay_us(PMW3389_TSWW);
+    
+    return ESP_OK;
+}
+
+/**
+ * @brief Upload SROM firmware to PMW3389 sensor
+ * 
+ * @param handle Device handle
+ * @return ESP_OK on success
+ */
+static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle) {
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    esp_err_t ret;
+    
+    ESP_LOGI(TAG, "Starting SROM firmware upload...");
+    
+    // Step 1: Write 0x1D to SROM_ENABLE register
+    ret = pmw3389_write_reg(dev, PMW3389_REG_SROM_ENABLE, 0x1D);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SROM enable init failed");
+        return ret;
+    }
+    delay_ms(10);
+    
+    // Step 2: Write 0x18 to SROM_ENABLE (start download)
+    ret = pmw3389_write_reg(dev, PMW3389_REG_SROM_ENABLE, 0x18);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SROM download start failed");
+        return ret;
+    }
+    delay_ms(1);
+    
+    // Step 3: Write firmware via burst mode
+    ESP_LOGI(TAG, "Uploading %d bytes of firmware...", PMW3389_SROM_LENGTH);
+    
+    // Send burst write address
+    uint8_t burst_addr = PMW3389_REG_SROM_LOAD_BURST | 0x80;
+    spi_transaction_t trans = {
+        .length = 8,
+        .tx_buffer = &burst_addr,
+        .rx_buffer = NULL
+    };
+    
+    ret = spi_device_polling_transmit(dev->spi, &trans);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Burst command failed");
+        return ret;
+    }
+    delay_us(15);
+    
+    // Upload firmware bytes
+    for (uint16_t i = 0; i < PMW3389_SROM_LENGTH; i++) {
+        trans.length = 8;
+        trans.tx_buffer = &pmw3389_srom_data[i];
+        
+        ret = spi_device_polling_transmit(dev->spi, &trans);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "SROM upload failed at byte %d", i);
+            return ret;
+        }
+        delay_us(15);
+        
+        // Progress every 512 bytes
+        if ((i & 0x1FF) == 0 && i > 0) {
+            ESP_LOGI(TAG, "Progress: %d%%", (i * 100) / PMW3389_SROM_LENGTH);
+        }
+    }
+    
+    ESP_LOGI(TAG, "Firmware upload complete (100%%)");
+    
+    // Step 4: Wait for completion
+    delay_ms(10);
+    
+    // Step 5: Read SROM ID to verify
+    uint8_t srom_id;
+    ret = pmw3389_read_reg(dev, PMW3389_REG_SROM_ID, &srom_id);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SROM verification failed");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "SROM ID after upload: 0x%02X", srom_id);
+    
+    // Expected SROM ID for PMW3389 with firmware 0xE8
+    if (srom_id == 0x04 || srom_id == 0x05 || srom_id == 0x06) {
+        ESP_LOGI(TAG, "SROM upload verified successfully!");
+    } else {
+        ESP_LOGW(TAG, "Unexpected SROM ID: 0x%02X (expected 0x04/0x05/0x06)", srom_id);
+    }
+    
+    delay_ms(10);
+    
+    return ESP_OK;
+}
+
+
 esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
     if (!handle) {
         ESP_LOGE(TAG, "Invalid handle");
@@ -253,6 +408,14 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
 
     struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
     esp_err_t ret;
+
+    ESP_LOGI(TAG, "Uploading SROM firmware...");
+    ret = pmw3389_upload_srom(handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SROM firmware upload failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "SROM firmware uploaded successfully");
 
     ESP_LOGI(TAG, "Configuring sensor in native mode");
 
@@ -336,62 +499,6 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
 
     ESP_LOGI(TAG, "Sensor configured successfully in native mode");
     ESP_LOGI(TAG, "Ready for tracking (optimal on quality mouse pads)");
-    
-    return ESP_OK;
-}
-
-esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data) {
-    if (!handle || !data) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
-    
-    uint8_t tx_data[2] = {addr & 0x7F, 0x00};
-    uint8_t rx_data[2] = {0};
-
-    spi_transaction_t trans = {
-        .length = 16,
-        .tx_buffer = tx_data,
-        .rx_buffer = rx_data,
-        .user = NULL,
-    };
-
-    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register read error 0x%02X: %s", addr, esp_err_to_name(ret));
-        return ret;
-    }
-
-    *data = rx_data[1];
-    delay_us(PMW3389_TSRR);
-    
-    return ESP_OK;
-}
-
-esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data) {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
-    
-    uint8_t tx_data[2] = {addr | 0x80, data};
-
-    spi_transaction_t trans = {
-        .length = 16,
-        .tx_buffer = tx_data,
-        .rx_buffer = NULL,
-        .user = NULL,
-    };
-
-    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register write error 0x%02X: %s", addr, esp_err_to_name(ret));
-        return ret;
-    }
-
-    delay_us(PMW3389_TSWW);
     
     return ESP_OK;
 }

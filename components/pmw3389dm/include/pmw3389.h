@@ -178,39 +178,6 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
 
 
 /**
- * @brief Configure the sensor for operation in native mode
- * 
- * This function applies optimal configuration settings for the sensor,
- * including rest mode, lift detection, and surface quality thresholds.
- * It prepares the sensor for motion tracking without external SROM firmware.
- * 
- * @param handle Device handle obtained from pmw3389_init()
- * 
- * @return 
- *     - ESP_OK on success
- *     - ESP_ERR_INVALID_ARG if handle is NULL
- *     - Other ESP_ERR codes for register access errors
- * 
- * @details
- * Configuration steps include:
- * - Setting rest mode configuration
- * - Disabling angle snap for raw motion data
- * - Configuring lift detection threshold
- * - Setting surface quality minimum threshold
- * - Configuring power management downshift
- * - Clearing motion registers
- * 
- * @usage
- * @code
- * esp_err_t ret = pmw3389_upload(sensor);
- * if (ret == ESP_OK) {
- *     // Sensor is ready for motion tracking
- * }
- * @endcode
- */
-esp_err_t pmw3389_upload(pmw3389_handle_t handle);
-
-/**
  * @brief Read a single register from the sensor
  * 
  * Performs a low-level SPI read operation to retrieve the value
@@ -262,6 +229,82 @@ esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data)
  * @endcode
  */
 esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data);
+
+/**
+ * @brief Upload SROM firmware to PMW3389 sensor
+ * 
+ * This function uploads the complete SROM (Serial ROM) firmware to the PMW3389
+ * optical sensor via SPI burst mode. The upload process follows the manufacturer's
+ * specified initialization sequence and verifies successful completion by reading
+ * the SROM ID register.
+ * 
+ * @param[in] handle Device handle obtained from pmw3389_init()
+ * 
+ * @return ESP_OK on successful firmware upload and verification
+ * @return ESP_ERR_INVALID_ARG if handle is NULL
+ * @return ESP_FAIL if SPI communication fails during any step
+ * 
+ * @details
+ * The firmware upload sequence consists of the following steps:
+ * 1. Initialize SROM mode by writing 0x1D to SROM_ENABLE register
+ * 2. Start download mode by writing 0x18 to SROM_ENABLE register
+ * 3. Upload firmware data via burst write mode (3070 bytes)
+ *    - Each byte requires a 15μs delay between transmissions
+ *    - Progress is logged every 512 bytes
+ * 4. Wait 10ms for sensor to process the firmware
+ * 5. Verify upload by reading SROM_ID register
+ *    - Expected values: 0x04, 0x05, or 0x06
+ * 
+ * @note This function should be called during sensor initialization before
+ *       configuring operational parameters
+ * @note The entire upload process takes approximately 50-60ms to complete
+ * @warning Do not interrupt the upload process once started
+ * 
+ * @code
+ * pmw3389_handle_t sensor;
+ * esp_err_t ret = pmw3389_init(&sensor, &config);
+ * if (ret == ESP_OK) {
+ *     ret = pmw3389_upload_srom(sensor);
+ *     if (ret == ESP_OK) {
+ *         ESP_LOGI(TAG, "Sensor ready for operation");
+ *     }
+ * }
+ * @endcode
+ */
+static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle);
+
+/**
+ * @brief Configure the sensor for operation in native mode
+ * 
+ * This function applies optimal configuration settings for the sensor,
+ * including rest mode, lift detection, and surface quality thresholds.
+ * It prepares the sensor for motion tracking without external SROM firmware.
+ * 
+ * @param handle Device handle obtained from pmw3389_init()
+ * 
+ * @return 
+ *     - ESP_OK on success
+ *     - ESP_ERR_INVALID_ARG if handle is NULL
+ *     - Other ESP_ERR codes for register access errors
+ * 
+ * @details
+ * Configuration steps include:
+ * - Setting rest mode configuration
+ * - Disabling angle snap for raw motion data
+ * - Configuring lift detection threshold
+ * - Setting surface quality minimum threshold
+ * - Configuring power management downshift
+ * - Clearing motion registers
+ * 
+ * @usage
+ * @code
+ * esp_err_t ret = pmw3389_upload(sensor);
+ * if (ret == ESP_OK) {
+ *     // Sensor is ready for motion tracking
+ * }
+ * @endcode
+ */
+esp_err_t pmw3389_upload(pmw3389_handle_t handle);
 
 /**
  * @brief Read motion data from the sensor
