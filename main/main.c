@@ -18,7 +18,7 @@
 #include "esp_system.h"
 #include "pmw3389.h"
 
-static const char *TAG = "MAIN";
+//static const char *TAG = "MAIN";
 
 // Pin configuartion for ESP32-S3
 #define PIN_MISO    GPIO_NUM_37

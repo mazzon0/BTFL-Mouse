@@ -541,7 +541,7 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
 
     //sensor initialization 
     pmw3389_handle_t sensor = NULL;
-    esp_err_t ret = pmw3389_init(&config, &sensor);
+    esp_err_t ret = pmw3389_init(config, &sensor);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Sensor initialization failed: %s", esp_err_to_name(ret));
         ESP_LOGE(TAG, "Check SPI connections, power supply (3.3V), and pins");

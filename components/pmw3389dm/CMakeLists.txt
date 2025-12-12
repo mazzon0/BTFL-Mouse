@@ -1,4 +1,8 @@
 file(GLOB_RECURSE srcs "src/*.c")
 
-idf_component_register(SRCS "${srcs}"
-                       INCLUDE_DIRS "./include")
+idf_component_register(
+    SRCS "src/pmw3389.c"
+    INCLUDE_DIRS "include"
+    REQUIRES driver esp_timer freertos
+    PRIV_REQUIRES esp_rom
+)
