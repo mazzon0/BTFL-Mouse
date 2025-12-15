@@ -39,6 +39,7 @@ struct pmw3389_dev_t {
     spi_host_device_t spi_host;
     int pin_cs;
     int pin_motion;
+    int pin_reset;
     bool initialized;
 };
 
@@ -96,7 +97,41 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     
     dev->pin_cs = config->pin_cs;
     dev->pin_motion = config->pin_motion;
+    dev->pin_reset = config->pin_reset;
     dev->spi_host = config->spi_host;
+
+    if(dev->pin_reset >=0){
+        ESP_LOGI(TAG, "Configuring RESET pin: GPIO%d", dev->pin_reset);
+    
+        gpio_config_t reset_conf = {
+            .pin_bit_mask = (1ULL << dev->pin_reset),
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        ret = gpio_config(&reset_conf);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to configure RESET pin: %s", esp_err_to_name(ret));
+            free(dev);
+            return ret;
+        }
+        
+        // RESET HARDWARE
+        ESP_LOGI(TAG, "Performing hardware reset...");
+        
+        // 1. RESET to LOW (reset activeted)
+        gpio_set_level(dev->pin_reset, 0);
+        delay_ms(10);  // Mantieni reset attivo per 10ms
+        
+        // 2. RESET to HIGH (reset relased)
+        gpio_set_level(dev->pin_reset, 1);
+        delay_ms(50);  // stability - 50ms
+        
+        ESP_LOGI(TAG, "Hardware reset completed");
+    } else {
+        ESP_LOGW(TAG, "RESET pin not configured! Sensor may not initialize correctly!");
+    }
 
     spi_bus_config_t buscfg = {
         .miso_io_num = config->pin_miso,
@@ -211,7 +246,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     if (product_id != PMW3389_PRODUCT_ID) {
         ESP_LOGE(TAG, "Invalid Product ID: 0x%02X (expected 0x%02X)", 
                  product_id, PMW3389_PRODUCT_ID);
-        ESP_LOGE(TAG, "Check SPI connections, power supply, and bypass capacitors");
+        ESP_LOGE(TAG, "Check SPI connections, power supply, reset-pin and bypass capacitors");
         pmw3389_deinit(dev);
         return ESP_ERR_NOT_FOUND;
     }

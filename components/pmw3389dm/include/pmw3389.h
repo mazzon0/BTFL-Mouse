@@ -79,7 +79,7 @@ extern "C" {
 #define PMW3389_REG_PWM_PERIOD_CNT      0x73
 #define PMW3389_REG_PWM_WIDTH_CNT       0x74
 
-#define PMW3389_PRODUCT_ID              0x47
+#define PMW3389_PRODUCT_ID              0xFF
 #define PMW3389_INVERSE_PRODUCT_ID      0xB9
 
 #define PMW3389_MOTION_BIT              (1 << 7)
@@ -120,6 +120,7 @@ typedef struct {
     int pin_sclk;
     int pin_cs;
     int pin_motion;
+    int pin_reset;
     int spi_clock_speed_hz;
 } pmw3389_config_t;
 
