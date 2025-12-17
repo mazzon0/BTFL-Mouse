@@ -24,7 +24,7 @@ extern "C" {
 #endif
 
 //register adresses
-#define PMW3389_REG_PRODUCT_ID          0x00
+#define PMW3389_REG_PRODUCT_ID          0xFF
 #define PMW3389_REG_REVISION_ID         0x01
 #define PMW3389_REG_MOTION              0x02
 #define PMW3389_REG_DELTA_X_L           0x03
@@ -79,7 +79,7 @@ extern "C" {
 #define PMW3389_REG_PWM_PERIOD_CNT      0x73
 #define PMW3389_REG_PWM_WIDTH_CNT       0x74
 
-#define PMW3389_PRODUCT_ID              0xFF
+#define PMW3389_PRODUCT_ID              0x00
 #define PMW3389_INVERSE_PRODUCT_ID      0xB9
 
 #define PMW3389_MOTION_BIT              (1 << 7)
