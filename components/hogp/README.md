@@ -43,8 +43,9 @@ void app_main(void) {
         .update_period_ms = 10,
     };
 
-    if (hogp_setup(&hogp_init_info) == HOGP_OK) {
-        printf("HOGP Initialized and Advertising...\n");
+    hogp_result_t res = hogp_setup(&hogp_init_info);
+    if (res != HOGP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
     }
 
     // Send events to the Bluetooth host
@@ -54,7 +55,7 @@ void app_main(void) {
     event.y = 16;
 
     for (int i = 0; i < 64; i++) {
-        hogp_send_data(&event);
+        hogp_send(&event);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
@@ -75,4 +76,5 @@ Future features will be:
 - composing multiple events in a single message, in order to save energy
 - support for keyboard events and other types of HID events
 - send the battery level to the host
-- boot protocol implementation (enabling to send mouse and keyboards events to simple hosts)
+- boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)
+- add callbacks to inform the system of upcoming events from the host

@@ -6,7 +6,6 @@
 
 /**
  * @brief Initialize the HOGP library and start the Bluetooth stack.
- * Initializes NVS flash (required for BLE bonding).
  * Initializes the NimBLE host stack.
  * Sets up the internal HOGP context and queues.
  * Configures GAP and GATT services (HID Service, Device Name).
@@ -34,6 +33,6 @@ hogp_result_t hogp_shutdown(void);
  * @return HOGP_OK on success.
  * @return HOGP_ERR_QUEUE_FULL if the data queue is full (event dropped).
  */
-hogp_result_t hogp_send_data(const hogp_data_event_t *event);   // TODO check if the task is running
+hogp_result_t hogp_send(const hogp_data_event_t *event);
 
 #endif /* HOGP_H */

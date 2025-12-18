@@ -267,7 +267,7 @@ static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_protoco
  * @return HOGP_OK on success.
  * @return HOGP_ERR_NOT_SUBSCRIBED if the host hasn't enabled notifications.
  */
-static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {  // TODO compose multiple events together
+static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
     hogp_context_t *ctx = hogp_get_context();
 
     if (event->type == HOGP_DEVT_CURSOR_MOTION || event->type == HOGP_DEVT_SCROLL_MOTION || event->type == HOGP_DEVT_MOUSE_BUTTON_PRESSED || event->type == HOGP_DEVT_MOUSE_BUTTON_RELEASED) {
@@ -317,6 +317,6 @@ static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_da
  * @note This is currently not implemented (Stub).
  * @return HOGP_ERR_NOT_SUPPORTED always.
  */
-static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {  // TODO
+static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
     return HOGP_ERR_NOT_SUPPORTED;
 }

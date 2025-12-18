@@ -64,10 +64,15 @@ hogp_result_t hogp_shutdown(void) {
     return HOGP_OK;
 }
 
-hogp_result_t hogp_send_data(const hogp_data_event_t *event) {
+hogp_result_t hogp_send(const hogp_data_event_t *event) {
+    if (!hogp_is_running()) {
+        ERROR("The HOGP FSM task is not running, unable to send the message");
+        return HOGP_ERR_INTERNAL_FAIL;
+    }
+
     hogp_context_t *ctx = hogp_get_context();
 
-    if (xQueueSendToBackFromISR(ctx->data_queue, event, 0) != pdPASS) { // TODO should be used in ISR?
+    if (xQueueSendToBackFromISR(ctx->data_queue, event, 0) != pdPASS) {
         ERROR("Push to data queue failed");
         return HOGP_ERR_QUEUE_FULL;
     }

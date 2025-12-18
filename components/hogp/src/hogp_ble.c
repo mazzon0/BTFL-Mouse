@@ -355,7 +355,7 @@ static inline void hogp_format_addr(char* addr_str, uint8_t addr[]) {
 // NimBLE callbacks
 
 /**
- * @brief  Callback invoked by NimBLE when the stack resets.
+ * @brief Callback invoked by NimBLE when the stack resets.
  * Log useful information for debugging (e.g., stack crash or manual reset).
  * @param  reason  The error code indicating why the reset occurred.
  */
@@ -364,12 +364,11 @@ static void ble_stack_reset_callback(int reason) {
 }
 
 /**
- * @brief  Callback invoked when the NimBLE stack is synced and ready.
+ * @brief Callback invoked when the NimBLE stack is synced and ready.
  * Infers the device's own address.
  * Sends the HOGP_CEVT_BLE_READY event to the FSM to trigger the application start.
  */
-static void ble_stack_sync_callback(void) { // TODO refactor
-    // BLE stack has been setupped, now we can setup advertising data and start advertising
+static void ble_stack_sync_callback(void) {
     hogp_context_t *ctx = hogp_get_context();
     int rc;
     char addr_str[18] = {0};

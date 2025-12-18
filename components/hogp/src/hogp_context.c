@@ -4,12 +4,17 @@
 #include "hogp_control_events.h"
 #include <string.h>
 
+static bool is_init_info_ok(const hogp_init_info_t *init_info);
+
 hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     hogp_context_t *ctx = hogp_get_context();
     
-    // TODO check init_info and also check device name length
     if (init_info == NULL) {
         ERROR("Failed to initialize context: init_info argument is NULL");
+        return HOGP_ERR_INVALID_ARG;
+    }
+
+    if (!is_init_info_ok(init_info)) {
         return HOGP_ERR_INVALID_ARG;
     }
 
@@ -65,4 +70,24 @@ hogp_result_t hogp_context_shutdown(void) {
     
     INFO("Context shutdown complete");
     return HOGP_OK;
+}
+
+static bool is_init_info_ok(const hogp_init_info_t *init_info) {
+    // Check appearance
+    if (init_info->device_data.appearance == HOGP_APPEARANCE_CUSTOM || init_info->device_data.appearance == HOGP_APPEARANCE_KEYBOARD) {
+        WARN("The host system may require the mouse appearance to receive mouse messages. If you really need this appearance, be aware that this library only supports mouse messages now");
+        return true;
+    }
+    else if (init_info->device_data.appearance != HOGP_APPEARANCE_MOUSE) {
+        ERROR("The appearence has an invalid value: %d", init_info->device_data.appearance);
+        return false;
+    }
+    
+    // Check name
+    if (strlen(init_info->device_data.device_name) > HOGP_DEVICE_NAME_MAX_CHARACTERS) {
+        ERROR("Device name has too many characters: %d (max is %d)", strlen(init_info->device_data.device_name), HOGP_DEVICE_NAME_MAX_CHARACTERS);
+        return false;
+    }
+
+    return true;
 }

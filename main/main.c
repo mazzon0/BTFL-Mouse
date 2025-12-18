@@ -34,7 +34,7 @@ void app_main(void) {
     event.y = 16;
 
     for (int i = 0; i < 64; i++) {
-        hogp_send_data(&event);
+        hogp_send(&event);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
