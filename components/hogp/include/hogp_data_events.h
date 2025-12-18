@@ -15,6 +15,21 @@ typedef enum {
 } hogp_data_event_type_t;
 
 /**
+ * @brief Mouse button bitmasks for HID reports.
+ * These values represent the bit positions in the first byte of a standard HID mouse report.
+ */
+typedef enum {
+    HOGP_MOUSE_BLEFT    = 0x01, /**< Left Button (Button 1) */
+    HOGP_MOUSE_BRIGHT   = 0x02, /**< Right Button (Button 2) */
+    HOGP_MOUSE_BMIDDLE  = 0x04, /**< Middle Button (Button 3) */
+    HOGP_MOUSE_B4       = 0x08, /**< Side Button 4 */
+    HOGP_MOUSE_B5       = 0x10, /**< Side Button 5 */
+    HOGP_MOUSE_B6       = 0x20, /**< Extra Button 6 */
+    HOGP_MOUSE_B7       = 0x40, /**< Extra Button 7 */
+    HOGP_MOUSE_B8       = 0x80  /**< Extra Button 8 */
+} hogp_mouse_button_t;
+
+/**
  * @brief Structure representing a data event.
  * Carries the specific payload (coordinates, button ID) corresponding to the event type.
  */
@@ -34,9 +49,8 @@ typedef struct {
         /**
          * @brief Payload for button events.
          * Used by HOGP_DEVT_MOUSE_BUTTON_PRESSED and HOGP_DEVT_MOUSE_BUTTON_RELEASED.
-         * 1 = Left, 2 = Right, 3 = Middle, etc.
          */
-        uint16_t button;
+        hogp_mouse_button_t button;
     };
 } hogp_data_event_t;
 
