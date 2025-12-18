@@ -12,17 +12,6 @@ hogp_result_t hogp_setup(const hogp_init_info_t *const init_info) {
     esp_err_t ret = ESP_OK;
     hogp_result_t rc = HOGP_OK;
 
-    // Init flash drive TODO should be done in main?
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    if (ret != ESP_OK) {
-        ERROR("Failed to initialize nvs flash, error code: %d ", ret);
-        return HOGP_ERR_INTERNAL_FAIL;
-    }
-
     // Init ble stack (NimBLE)
     ret = nimble_port_init();
     if (ret != ESP_OK) {
