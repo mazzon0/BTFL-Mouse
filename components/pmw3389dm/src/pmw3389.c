@@ -7,8 +7,8 @@
  * tracking, and configuration management.
  * 
  * @author Ilaria
- * @date 2025-12-04
- * @version 2.0
+ * @date 2025-12-21
+ * @version 3.0 - MANUAL CS CONTROL (Arduino-style)
  */
 
 #include "pmw3389.h"
@@ -24,16 +24,12 @@
 
 static const char *TAG = "PMW3389";
 
-static TaskHandle_t g_motion_task_handle = NULL;  // Handle task
-static volatile bool g_motion_interrupt_flag = false;  // Flag interrupt
+static TaskHandle_t g_motion_task_handle = NULL;
+static volatile bool g_motion_interrupt_flag = false;
 
 /**
  * @brief Internal device structure
- * 
- * Contains all hardware-specific information and state
- * for a single PMW3389 sensor instance.
  */
-
 struct pmw3389_dev_t {
     spi_device_handle_t spi;
     spi_host_device_t spi_host;
@@ -44,31 +40,56 @@ struct pmw3389_dev_t {
 };
 
 /**
- * @brief Delay for specified microseconds
- * 
- * @param us Microseconds to delay
+ * @brief Delay microseconds
  */
 static inline void delay_us(uint32_t us) {
     esp_rom_delay_us(us);
 }
 
 /**
- * @brief Delay for specified milliseconds
- * 
- * @param ms Milliseconds to delay
+ * @brief Delay milliseconds
  */
 static inline void delay_ms(uint32_t ms) {
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
+/**
+ * @brief CS Low - Start communication (Arduino style)
+ */
+static inline void cs_low(pmw3389_handle_t handle) {
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    gpio_set_level(dev->pin_cs, 0);
+}
+
+/**
+ * @brief CS High - End communication (Arduino style)
+ */
+static inline void cs_high(pmw3389_handle_t handle) {
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    gpio_set_level(dev->pin_cs, 1);
+}
+
+/**
+ * @brief SPI transfer single byte (Arduino SPI.transfer() style)
+ */
+static uint8_t spi_transfer(pmw3389_handle_t handle, uint8_t data) {
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
+    spi_transaction_t trans = {
+        .flags = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA,
+        .length = 8,  // 1 byte
+        .tx_data = {data},
+    };
+    
+    spi_device_polling_transmit(dev->spi, &trans);
+    return trans.rx_data[0];
+}
+
 static void IRAM_ATTR motion_isr_handler(void* arg) {
-    // flag set
     g_motion_interrupt_flag = true;
     
-    //wake-up of the main task
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     if (g_motion_task_handle != NULL) {
-        // notify the task of a movment
         vTaskNotifyGiveFromISR(g_motion_task_handle, &xHigherPriorityTaskWoken);
         
         if (xHigherPriorityTaskWoken == pdTRUE) {
@@ -76,7 +97,6 @@ static void IRAM_ATTR motion_isr_handler(void* arg) {
         }
     }
 }
-
 
 esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_handle) {
     esp_err_t ret;
@@ -86,7 +106,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_LOGI(TAG, "Initializing PMW3389...");
+    ESP_LOGI(TAG, "Initializing PMW3389 (Manual CS mode)...");
 
     struct pmw3389_dev_t *dev = malloc(sizeof(struct pmw3389_dev_t));
     if (!dev) {
@@ -100,7 +120,8 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     dev->pin_reset = config->pin_reset;
     dev->spi_host = config->spi_host;
 
-    if(dev->pin_reset >=0){
+    // Configure RESET pin
+    if(dev->pin_reset >= 0){
         ESP_LOGI(TAG, "Configuring RESET pin: GPIO%d", dev->pin_reset);
     
         gpio_config_t reset_conf = {
@@ -117,22 +138,36 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
             return ret;
         }
         
-        // RESET HARDWARE
+        // Hardware RESET
         ESP_LOGI(TAG, "Performing hardware reset...");
-        
-        // 1. RESET to LOW (reset activeted)
         gpio_set_level(dev->pin_reset, 0);
-        delay_ms(10);  // Mantieni reset attivo per 10ms
-        
-        // 2. RESET to HIGH (reset relased)
+        delay_ms(10);
         gpio_set_level(dev->pin_reset, 1);
-        delay_ms(50);  // stability - 50ms
+        delay_ms(50);
         
         ESP_LOGI(TAG, "Hardware reset completed");
     } else {
-        ESP_LOGW(TAG, "RESET pin not configured! Sensor may not initialize correctly!");
+        ESP_LOGW(TAG, "RESET pin not configured!");
     }
 
+    // Configure CS pin (MANUAL control - like Arduino)
+    ESP_LOGI(TAG, "Configuring CS pin: GPIO%d (Manual control)", dev->pin_cs);
+    gpio_config_t cs_conf = {
+        .pin_bit_mask = (1ULL << dev->pin_cs),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,  // Pull-up on CS
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ret = gpio_config(&cs_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure CS pin: %s", esp_err_to_name(ret));
+        free(dev);
+        return ret;
+    }
+    gpio_set_level(dev->pin_cs, 1);  // CS HIGH (inactive)
+
+    // Initialize SPI bus
     spi_bus_config_t buscfg = {
         .miso_io_num = config->pin_miso,
         .mosi_io_num = config->pin_mosi,
@@ -153,10 +188,11 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
         ESP_LOGW(TAG, "SPI bus already initialized");
     }
 
+    // Add SPI device with MANUAL CS control
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = config->spi_clock_speed_hz,
-        .mode = 3,
-        .spics_io_num = config->pin_cs,
+        .mode = 3,  // SPI_MODE3
+        .spics_io_num = -1,  // -1 = Manual CS control (like Arduino!)
         .queue_size = 7,
         .flags = 0,
         .pre_cb = NULL,
@@ -171,53 +207,57 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
         return ret;
     }
 
-    ESP_LOGI(TAG, "SPI configured: Host=%d, CS=GPIO%d, Clock=%d Hz, Mode=3",
+    ESP_LOGI(TAG, "SPI configured: Host=%d, CS=GPIO%d (Manual), Clock=%d Hz, Mode=3",
              config->spi_host, config->pin_cs, config->spi_clock_speed_hz);
 
+    // Configure MOTION interrupt pin (if provided)
     if (dev->pin_motion >= 0) {
         gpio_config_t io_conf = {
             .pin_bit_mask = (1ULL << dev->pin_motion),
             .mode = GPIO_MODE_INPUT,
             .pull_up_en = GPIO_PULLUP_DISABLE,
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_POSEDGE, //interrupt (HIGH)
+            .intr_type = GPIO_INTR_POSEDGE,
         };
         gpio_config(&io_conf);
 
-    static bool isr_service_installed = false;
-    if (!isr_service_installed) {
-        ret = gpio_install_isr_service(0);  // 0 = default priority
-        if (ret == ESP_OK) {
-            isr_service_installed = true;
-            ESP_LOGI(TAG, "GPIO ISR service installed");
-        } else if (ret == ESP_ERR_INVALID_STATE) {
-            //already install(ok)
-            ESP_LOGD(TAG, "GPIO ISR service already installed");
-        } else {
-            ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", 
-                     esp_err_to_name(ret));
+        static bool isr_service_installed = false;
+        if (!isr_service_installed) {
+            ret = gpio_install_isr_service(0);
+            if (ret == ESP_OK) {
+                isr_service_installed = true;
+                ESP_LOGI(TAG, "GPIO ISR service installed");
+            } else if (ret == ESP_ERR_INVALID_STATE) {
+                ESP_LOGD(TAG, "GPIO ISR service already installed");
+            } else {
+                ESP_LOGE(TAG, "Failed to install GPIO ISR service: %s", 
+                         esp_err_to_name(ret));
+                pmw3389_deinit(dev);
+                return ret;
+            }
+        }
+        
+        ret = gpio_isr_handler_add(dev->pin_motion, motion_isr_handler, NULL);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to add ISR handler: %s", esp_err_to_name(ret));
             pmw3389_deinit(dev);
             return ret;
         }
+        
+        ESP_LOGI(TAG, "Pin MOTION configured with interrupt: GPIO%d", dev->pin_motion);
     }
-    
-    //associate ISR handler with a specific GPIO (motion_isr_handler)
-    ret = gpio_isr_handler_add(dev->pin_motion, motion_isr_handler, NULL);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add ISR handler: %s", esp_err_to_name(ret));
-        pmw3389_deinit(dev);
-        return ret;
-    }
-    
-    ESP_LOGI(TAG, "Pin MOTION configured with interrupt: GPIO%d", dev->pin_motion);
-}
-
-     
 
     ESP_LOGI(TAG, "Waiting for hardware stabilization...");
     delay_ms(50);
 
     ESP_LOGI(TAG, "Executing sensor reset...");
+    
+    // CS pulse (Arduino style)
+    cs_high(dev);
+    delay_ms(1);
+    cs_low(dev);
+    delay_ms(1);
+    cs_high(dev);
     
     ret = pmw3389_write_reg(dev, PMW3389_REG_SHUTDOWN, 0xB6);
     if (ret != ESP_OK) {
@@ -246,14 +286,14 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     if (product_id != PMW3389_PRODUCT_ID) {
         ESP_LOGE(TAG, "Invalid Product ID: 0x%02X (expected 0x%02X)", 
                  product_id, PMW3389_PRODUCT_ID);
-        ESP_LOGE(TAG, "Check SPI connections, power supply, reset-pin and bypass capacitors");
+        ESP_LOGE(TAG, "Check SPI connections, power supply, and CS pin");
         pmw3389_deinit(dev);
         return ESP_ERR_NOT_FOUND;
     }
 
     uint8_t inv_product_id = 0;
     pmw3389_read_reg(dev, PMW3389_REG_INVERSE_PRODUCT_ID, &inv_product_id);
-    
+
     if (inv_product_id != PMW3389_INVERSE_PRODUCT_ID) {
         ESP_LOGW(TAG, "Unexpected Inverse Product ID: 0x%02X (expected 0x%02X)",
                  inv_product_id, PMW3389_INVERSE_PRODUCT_ID);
@@ -266,7 +306,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     pmw3389_read_reg(dev, PMW3389_REG_REVISION_ID, &revision_id);
     ESP_LOGI(TAG, "Revision ID: 0x%02X", revision_id);
 
-    //clear motion registers
+    // Clear motion registers
     uint8_t dummy;
     pmw3389_read_reg(dev, PMW3389_REG_MOTION, &dummy);
     pmw3389_read_reg(dev, PMW3389_REG_DELTA_X_L, &dummy);
@@ -281,260 +321,172 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     return ESP_OK;
 }
 
-
 esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data) {
     if (!handle || !data) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
-    
-    uint8_t tx_data[2] = {addr & 0x7F, 0x00};
-    uint8_t rx_data[2] = {0};
-
-    spi_transaction_t trans = {
-        .length = 16,
-        .tx_buffer = tx_data,
-        .rx_buffer = rx_data,
-        .user = NULL,
-    };
-
-    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register read error 0x%02X: %s", addr, esp_err_to_name(ret));
-        return ret;
-    }
-
-    *data = rx_data[1];
-    delay_us(PMW3389_TSRR);
+    // MANUAL CS control - Arduino style!
+    cs_low(handle);
+    spi_transfer(handle, addr & 0x7F);  // Clear bit 7 for read
+    delay_us(100);
+    *data = spi_transfer(handle, 0x00);
+    delay_us(1);
+    cs_high(handle);
+    delay_us(20);
     
     return ESP_OK;
 }
 
 esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data) {
-
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
-    
-    uint8_t tx_data[2] = {addr | 0x80, data};
-
-    spi_transaction_t trans = {
-        .length = 16,
-        .tx_buffer = tx_data,
-        .rx_buffer = NULL,
-        .user = NULL,
-    };
-
-    esp_err_t ret = spi_device_polling_transmit(dev->spi, &trans);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Register write error 0x%02X: %s", addr, esp_err_to_name(ret));
-        return ret;
-    }
-
-    delay_us(PMW3389_TSWW);
+    // MANUAL CS control - Arduino style!
+    cs_low(handle);
+    spi_transfer(handle, addr | 0x80);  // Set bit 7 for write
+    spi_transfer(handle, data);
+    delay_us(20);
+    cs_high(handle);
+    delay_us(100);
     
     return ESP_OK;
 }
 
 /**
- * @brief Upload SROM firmware to PMW3389 sensor
- * 
- * @param handle Device handle
- * @return ESP_OK on success
+ * @brief Upload SROM firmware (Manual CS, burst mode)
  */
 static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle) {
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
     }
     
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
     esp_err_t ret;
     
-    ESP_LOGI(TAG, "Starting SROM firmware upload...");
+    ESP_LOGI(TAG, "Starting SROM firmware upload (%d bytes)...", PMW3389_SROM_LENGTH);
+
     
-    // Step 1: Write 0x1D to SROM_ENABLE register
-    ret = pmw3389_write_reg(dev, PMW3389_REG_SROM_ENABLE, 0x1D);
+    ret = pmw3389_write_reg(handle, PMW3389_REG_CONFIG2, 0x20);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SROM enable init failed");
+        ESP_LOGE(TAG, "Failed to set Config2");
+        return ret;
+    }
+    
+    // Step 1: Write 0x1D to SROM_ENABLE
+    ret = pmw3389_write_reg(handle, PMW3389_REG_SROM_ENABLE, 0x1D);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable SROM download mode");
         return ret;
     }
     delay_ms(10);
     
-    // Step 2: Write 0x18 to SROM_ENABLE (start download)
-    ret = pmw3389_write_reg(dev, PMW3389_REG_SROM_ENABLE, 0x18);
+    // Step 2: Write 0x18 to SROM_ENABLE
+    ret = pmw3389_write_reg(handle, PMW3389_REG_SROM_ENABLE, 0x18);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SROM download start failed");
+        ESP_LOGE(TAG, "Failed to start SROM download");
         return ret;
     }
-    delay_ms(1);
     
-    // Step 3: Write firmware via burst mode
-    ESP_LOGI(TAG, "Uploading %d bytes of firmware...", PMW3389_SROM_LENGTH);
+    // Step 3: Burst upload (Manual CS like Arduino!)
+    ESP_LOGI(TAG, "Uploading firmware in burst mode...");
     
-    // Send burst write address
-    uint8_t burst_addr = PMW3389_REG_SROM_LOAD_BURST | 0x80;
-    spi_transaction_t trans = {
-        .length = 8,
-        .tx_buffer = &burst_addr,
-        .rx_buffer = NULL
-    };
-    
-    ret = spi_device_polling_transmit(dev->spi, &trans);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Burst command failed");
-        return ret;
-    }
+    cs_low(handle);
+    spi_transfer(handle, PMW3389_REG_SROM_LOAD_BURST | 0x80);
     delay_us(15);
     
-    // Upload firmware bytes
-    for (uint16_t i = 0; i < PMW3389_SROM_LENGTH; i++) {
-        trans.length = 8;
-        trans.tx_buffer = &pmw3389_srom_data[i];
+    // Upload all firmware bytes
+    for (int i = 0; i < PMW3389_SROM_LENGTH; i++) {
+        spi_transfer(handle, pmw3389_srom_data[i]);
+        delay_us(20); //15
         
-        ret = spi_device_polling_transmit(dev->spi, &trans);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "SROM upload failed at byte %d", i);
-            return ret;
-        }
-        delay_us(15);
-        
-        // Progress every 512 bytes
-        if ((i & 0x1FF) == 0 && i > 0) {
-            ESP_LOGI(TAG, "Progress: %d%%", (i * 100) / PMW3389_SROM_LENGTH);
+        // Progress indicator
+        if ((i % 512) == 0 && i > 0) {
+            ESP_LOGI(TAG, "Progress: %d / %d bytes (%.1f%%)", 
+                     i, PMW3389_SROM_LENGTH, (float)i * 100.0f / PMW3389_SROM_LENGTH);
         }
     }
     
-    ESP_LOGI(TAG, "Firmware upload complete (100%%)");
+    cs_high(handle);
+    delay_us(500); //200
+    delay_ms(50); //
     
-    // Step 4: Wait for completion
-    delay_ms(10);
-    
-    // Step 5: Read SROM ID to verify
+    // Step 4: Verify SROM ID
     uint8_t srom_id;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_SROM_ID, &srom_id);
+    ret = pmw3389_read_reg(handle, PMW3389_REG_SROM_ID, &srom_id);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SROM verification failed");
+        ESP_LOGE(TAG, "Failed to read SROM ID");
         return ret;
     }
     
-    ESP_LOGI(TAG, "SROM ID after upload: 0x%02X", srom_id);
+    ESP_LOGI(TAG, "SROM upload complete! SROM ID: 0x%02X %s", 
+             srom_id, (srom_id == 0xE8) ? "(OK)" : "(ERROR!)");
     
-    // Expected SROM ID for PMW3389 with firmware 0xE8
-    if (srom_id == 0x04 || srom_id == 0x05 || srom_id == 0x06) {
-        ESP_LOGI(TAG, "SROM upload verified successfully!");
-    } else {
-        ESP_LOGW(TAG, "Unexpected SROM ID: 0x%02X (expected 0x04/0x05/0x06)", srom_id);
+    if (srom_id != 0xE8) {
+        ESP_LOGE(TAG, "SROM verification FAILED! Expected 0xE8");
+        return ESP_FAIL;
     }
-    
-    delay_ms(10);
     
     return ESP_OK;
 }
 
-
 esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
     if (!handle) {
-        ESP_LOGE(TAG, "Invalid handle");
         return ESP_ERR_INVALID_ARG;
     }
-
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
     esp_err_t ret;
-
-    ESP_LOGI(TAG, "Uploading SROM firmware...");
+    
+    ESP_LOGI(TAG, "Configuring sensor (native mode)...");
+    
+    // Upload SROM firmware
     ret = pmw3389_upload_srom(handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SROM firmware upload failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-    ESP_LOGI(TAG, "SROM firmware uploaded successfully");
-
-    ESP_LOGI(TAG, "Configuring sensor in native mode");
-
-    uint8_t status;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_OBSERVATION, &status);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Sensor status read error");
+        ESP_LOGE(TAG, "SROM upload failed");
         return ret;
     }
     
-    ESP_LOGD(TAG, "Initial sensor status: 0x%02X", status);
-
-    ESP_LOGD(TAG, "Configuring Rest Mode...");
-    ret = pmw3389_write_reg(dev, PMW3389_REG_CONFIG2, 0x00);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Rest Mode configuration error");
-        return ret;
-    }
     delay_ms(10);
-
-    uint8_t srom_id;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_SROM_ID, &srom_id);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "SROM ID read error");
-        return ret;
-    }
     
-    ESP_LOGI(TAG, "SROM ID: 0x%02X (internal firmware)", srom_id);
+    // Additional configuration
+    pmw3389_write_reg(handle, PMW3389_REG_CONFIG2, 0x00);
+    
+    // Set run downshift time
+    pmw3389_write_reg(handle, PMW3389_REG_RUN_DOWNSHIFT, 0x0A);
 
-    ESP_LOGD(TAG, "Disabling Angle Snap...");
-    ret = pmw3389_write_reg(dev, PMW3389_REG_ANGLE_SNAP, 0x00);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Angle Snap configuration error");
-    }
-    delay_ms(1);
-
-    ESP_LOGD(TAG, "Configuring Lift Detection...");
-    ret = pmw3389_write_reg(dev, PMW3389_REG_LIFT_CONFIG, 0x02);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Lift Detection configuration error");
-    }
-    delay_ms(1);
-
-    ESP_LOGD(TAG, "Configuring Surface Quality threshold...");
-    ret = pmw3389_write_reg(dev, PMW3389_REG_MIN_SQ_RUN, 0x05);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "SQUAL threshold configuration error");
-    }
-    delay_ms(1);
-
-    ESP_LOGD(TAG, "Configuring power management...");
-    ret = pmw3389_write_reg(dev, PMW3389_REG_RUN_DOWNSHIFT, 0x32);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Downshift configuration error");
-    }
-    delay_ms(1);
-
-    ret = pmw3389_read_reg(dev, PMW3389_REG_OBSERVATION, &status);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Final status read error");
-        return ret;
-    }
-
-    if (status & 0x40) {
-        ESP_LOGW(TAG, "Warning: SROM error bit active (0x%02X)", status);
-        ESP_LOGW(TAG, "Normal without external SROM firmware");
-    }
-
-    uint8_t squal;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_SQUAL, &squal);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Initial Surface Quality: %d", squal);
-    }
-
+     
+    pmw3389_write_reg(handle, PMW3389_REG_CONFIG1, 0x3F);  // 3200 CPI
+    
+    // Set rest mode rates
+    pmw3389_write_reg(handle, PMW3389_REG_REST1_RATE_LOWER, 0x0A);
+    pmw3389_write_reg(handle, PMW3389_REG_REST1_RATE_UPPER, 0x00);
+    pmw3389_write_reg(handle, PMW3389_REG_REST1_DOWNSHIFT, 0x00);
+    
+    pmw3389_write_reg(handle, PMW3389_REG_REST2_RATE_LOWER, 0x64);
+    pmw3389_write_reg(handle, PMW3389_REG_REST2_RATE_UPPER, 0x00);
+    pmw3389_write_reg(handle, PMW3389_REG_REST2_DOWNSHIFT, 0x00);
+    
+    pmw3389_write_reg(handle, PMW3389_REG_REST3_RATE_LOWER, 0xC8);
+    pmw3389_write_reg(handle, PMW3389_REG_REST3_RATE_UPPER, 0x00);
+    
+    // Disable angle snap
+    pmw3389_write_reg(handle, PMW3389_REG_ANGLE_SNAP, 0x00);
+    
+    // Set lift detection threshold
+    pmw3389_write_reg(handle, PMW3389_REG_LIFT_CONFIG, 0x02);
+    
+    // Set surface quality minimum
+    pmw3389_write_reg(handle, PMW3389_REG_MIN_SQ_RUN, 0x00);
+    
+    // Clear motion registers
     uint8_t dummy;
-    pmw3389_read_reg(dev, PMW3389_REG_MOTION, &dummy);
-    pmw3389_read_reg(dev, PMW3389_REG_DELTA_X_L, &dummy);
-    pmw3389_read_reg(dev, PMW3389_REG_DELTA_X_H, &dummy);
-    pmw3389_read_reg(dev, PMW3389_REG_DELTA_Y_L, &dummy);
-    pmw3389_read_reg(dev, PMW3389_REG_DELTA_Y_H, &dummy);
-
-    ESP_LOGI(TAG, "Sensor configured successfully in native mode");
-    ESP_LOGI(TAG, "Ready for tracking (optimal on quality mouse pads)");
+    pmw3389_read_reg(handle, PMW3389_REG_MOTION, &dummy);
+    pmw3389_read_reg(handle, PMW3389_REG_DELTA_X_L, &dummy);
+    pmw3389_read_reg(handle, PMW3389_REG_DELTA_X_H, &dummy);
+    pmw3389_read_reg(handle, PMW3389_REG_DELTA_Y_L, &dummy);
+    pmw3389_read_reg(handle, PMW3389_REG_DELTA_Y_H, &dummy);
     
+    ESP_LOGI(TAG, "Sensor configuration completed");
     return ESP_OK;
 }
 
@@ -542,71 +494,75 @@ esp_err_t pmw3389_read_motion(pmw3389_handle_t handle, pmw3389_motion_data_t *mo
     if (!handle || !motion_data) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
     esp_err_t ret;
-
-    uint8_t motion_reg;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_MOTION, &motion_reg);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    motion_data->motion_detected = (motion_reg & PMW3389_MOTION_BIT) != 0;
-
-    uint8_t delta_x_l, delta_x_h;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_DELTA_X_L, &delta_x_l);
+    
+   
+    ret = pmw3389_write_reg(handle, PMW3389_REG_MOTION, 0x01);
     if (ret != ESP_OK) return ret;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_DELTA_X_H, &delta_x_h);
+    
+    delay_us(75);
+    
+    // Leggi Motion register
+    uint8_t motion_reg = 0;
+    ret = pmw3389_read_reg(handle, PMW3389_REG_MOTION, &motion_reg);
     if (ret != ESP_OK) return ret;
-
-    uint8_t delta_y_l, delta_y_h;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_DELTA_Y_L, &delta_y_l);
+    
+    motion_data->motion_detected = (motion_reg & 0x80) != 0;
+    motion_data->lift_detected = (motion_reg & 0x08) != 0;
+    
+    
+    uint8_t delta_x_l = 0;
+    uint8_t delta_y_l = 0;
+    
+    ret = pmw3389_read_reg(handle, PMW3389_REG_DELTA_X_L, &delta_x_l);
     if (ret != ESP_OK) return ret;
-    ret = pmw3389_read_reg(dev, PMW3389_REG_DELTA_Y_H, &delta_y_h);
+    
+    ret = pmw3389_read_reg(handle, PMW3389_REG_DELTA_Y_L, &delta_y_l);
     if (ret != ESP_OK) return ret;
-
-    ret = pmw3389_read_reg(dev, PMW3389_REG_SQUAL, &motion_data->squal);
+    
+    ret = pmw3389_read_reg(handle, PMW3389_REG_SQUAL, &motion_data->squal);
     if (ret != ESP_OK) return ret;
-
-    motion_data->delta_x = (int16_t)((delta_x_h << 8) | delta_x_l);
-    motion_data->delta_y = (int16_t)((delta_y_h << 8) | delta_y_l);
-
+    
+    // Conversione two's complement (8-bit)
+    motion_data->delta_x = (int8_t)delta_x_l;
+    motion_data->delta_y = (int8_t)delta_y_l;
+    
     return ESP_OK;
 }
+
 
 esp_err_t pmw3389_set_cpi(pmw3389_handle_t handle, uint16_t cpi) {
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    if (cpi < 50 || cpi > 16000) {
-        ESP_LOGE(TAG, "CPI out of range: %d (valid: 50-16000)", cpi);
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    if (cpi % 50 != 0) {
-        ESP_LOGW(TAG, "CPI not multiple of 50, rounding to %d", (cpi / 50) * 50);
-        cpi = (cpi / 50) * 50;
-    }
-
-    uint8_t cpi_value = (cpi / 50) - 1;
-
-    esp_err_t ret;
     
+    if (cpi < 50 || cpi > 16000) {
+        ESP_LOGW(TAG, "CPI out of range (50-16000), clamping");
+        cpi = (cpi < 50) ? 50 : 16000;
+    }
+    
+    cpi = (cpi / 50) * 50;
+    uint8_t cpi_value = (cpi / 50) - 1;
+    
+    ESP_LOGI(TAG, "Setting CPI to %d (register value: 0x%02X)", cpi, cpi_value);
+    
+    esp_err_t ret;
     ret = pmw3389_write_reg(handle, PMW3389_REG_CONFIG1, cpi_value);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Config1 write error");
         return ret;
     }
     
     ret = pmw3389_write_reg(handle, PMW3389_REG_CONFIG2, cpi_value);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Config2 write error");
         return ret;
     }
-
-    ESP_LOGI(TAG, "CPI set to: %d (register value: 0x%02X)", cpi, cpi_value);
+    
+    delay_ms(10);
+    
+    uint8_t verify_cpi;
+    pmw3389_read_reg(handle, PMW3389_REG_CONFIG1, &verify_cpi);
+    ESP_LOGI(TAG, "CPI verification: 0x%02X (%d CPI)", verify_cpi, (verify_cpi + 1) * 50);
     
     return ESP_OK;
 }
@@ -615,24 +571,16 @@ esp_err_t pmw3389_deinit(pmw3389_handle_t handle) {
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
     }
-
+    
     struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
     
-    ESP_LOGI(TAG, "Deinitializing driver...");
-
-    if (dev->initialized) {
-        pmw3389_write_reg(dev, PMW3389_REG_SHUTDOWN, 0xB6);
-    }
-
+    pmw3389_write_reg(dev, PMW3389_REG_SHUTDOWN, 0xB6);
+    
     if (dev->spi) {
-        esp_err_t ret = spi_bus_remove_device(dev->spi);
-        if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "SPI device removal error: %s", esp_err_to_name(ret));
-        }
+        spi_bus_remove_device(dev->spi);
     }
-
+    
     free(dev);
-    ESP_LOGI(TAG, "Driver deinitialized");
     
     return ESP_OK;
 }
@@ -674,19 +622,16 @@ esp_err_t pmw3389_dump_registers(pmw3389_handle_t handle) {
     pmw3389_read_reg(handle, PMW3389_REG_OBSERVATION, &value);
     ESP_LOGI(TAG, "Observation:        0x%02X", value);
     
-    
     return ESP_OK;
 }
 
 esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
     ESP_LOGI(TAG, "=== PMW3389 Driver Test ===");
 
-    //sensor initialization 
     pmw3389_handle_t sensor = NULL;
     esp_err_t ret = pmw3389_init(config, &sensor);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Sensor initialization failed: %s", esp_err_to_name(ret));
-        ESP_LOGE(TAG, "Check SPI connections, power supply (3.3V), and pins");
         return ret;
     }
 
@@ -699,8 +644,6 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
         pmw3389_deinit(sensor);
         return ret;
     }
-
-    //set CPI - tracking resolution
     
     ret = pmw3389_set_cpi(sensor, cpi);
     if (ret != ESP_OK) {
@@ -710,8 +653,6 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
     ESP_LOGI(TAG, "\n=== MOTION READING START ===");
     ESP_LOGI(TAG, "Move the sensor to see ΔX and ΔY values");
     
-
-    //statics tracking variables
     uint32_t read_count = 0;
     uint32_t motion_count = 0;
     int32_t total_x = 0;
@@ -720,7 +661,6 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
     while (1) {
         pmw3389_motion_data_t motion;
         
-        //read motion data from sensor
         ret = pmw3389_read_motion(sensor, &motion);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
@@ -730,7 +670,6 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
 
         read_count++;
 
-        //print only if movement is detected
         if (motion.motion_detected || motion.delta_x != 0 || motion.delta_y != 0) {
             motion_count++;
             total_x += motion.delta_x;
@@ -744,7 +683,6 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
                      motion.lift_detected ? " [LIFT]" : "");
         }
 
-        //statistics every 5s (5oreads)
         if (read_count % 50 == 0) {
             ESP_LOGI(TAG, "--- Statistics ---");
             ESP_LOGI(TAG, "Reads: %lu | Motions: %lu (%.1f%%)",
@@ -754,23 +692,116 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
                      total_x, total_y);
         }
 
-        // delay between reads - 100ms (10Hz)
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    //cleanup
     pmw3389_deinit(sensor);
     return ESP_OK;
 }
 
-/**
- * @brief Test motion with interrupt 
- * 
- * 
- * The task is asleep when there isn't moviment
- */
 
- 
+esp_err_t pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cpi, pmw3389_handle_t *out_handle) {
+    if (!config || !out_handle) {
+        ESP_LOGE(TAG, "Invalid parameters");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    esp_err_t ret;
+    
+    // Step 1: Initialize hardware
+    ESP_LOGI(TAG, "Initializing PMW3389 sensor...");
+    ret = pmw3389_init(config, out_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Sensor initialization failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    ESP_LOGI(TAG, "✓ Hardware initialized");
+    
+    // Step 2: Upload firmware
+    ESP_LOGI(TAG, "Loading SROM firmware...");
+    ret = pmw3389_upload(*out_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Firmware upload failed: %s", esp_err_to_name(ret));
+        pmw3389_deinit(*out_handle);
+        return ret;
+    }
+    ESP_LOGI(TAG, "✓ Firmware loaded");
+    
+    // Step 3: Set CPI
+    ESP_LOGI(TAG, "Setting CPI to %d...", cpi);
+    ret = pmw3389_set_cpi(*out_handle, cpi);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "CPI setting failed: %s", esp_err_to_name(ret));
+    }
+    ESP_LOGI(TAG, "✓ CPI configured");
+    
+    ESP_LOGI(TAG, "");
+    ESP_LOGI(TAG, "=== PMW3389 READY ===");
+    ESP_LOGI(TAG, "");
+    
+    return ESP_OK;
+}
+
+void pmw3389_start_motion_tracking(pmw3389_handle_t handle, uint32_t poll_interval_ms) {
+    if (!handle) {
+        ESP_LOGE(TAG, "Invalid handle");
+        return;
+    }
+    
+    ESP_LOGI(TAG, "=== MOTION TRACKING START (POLLING MODE) ===");
+    ESP_LOGI(TAG, "Move the sensor to see X/Y movement");
+    ESP_LOGI(TAG, "");
+    
+    uint32_t read_count = 0;
+    uint32_t motion_count = 0;
+    int32_t total_x = 0;
+    int32_t total_y = 0;
+    
+    while (1) {
+        pmw3389_motion_data_t motion;
+        
+        esp_err_t ret = pmw3389_read_motion(handle, &motion);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+            continue;
+        }
+        
+        read_count++;
+        
+       // Always display SQUAL to diagnose issues
+        if (read_count % 10 == 0) {  // Display every 10 reads (0.2s)
+            ESP_LOGI(TAG, "X: %6d | Y: %6d | SQUAL: %3d | Motion: %s%s",
+                    motion.delta_x,
+                    motion.delta_y,
+                    motion.squal,
+                    motion.motion_detected ? "YES" : "NO",
+                    motion.lift_detected ? " [LIFT]" : "");
+        }
+
+        if (motion.delta_x != 0 || motion.delta_y != 0) {
+            motion_count++;
+            total_x += motion.delta_x;
+            total_y += motion.delta_y;
+        }
+        
+        // Display statistics every 50 reads
+        if (read_count % 50 == 0) {
+            ESP_LOGI(TAG, "--- Statistics (reads: %lu, motions: %lu, %.1f%%) ---",
+                     read_count, 
+                     motion_count,
+                     (float)motion_count * 100.0f / read_count);
+            ESP_LOGI(TAG, "Total displacement - X: %ld | Y: %ld",
+                     total_x, total_y);
+            ESP_LOGI(TAG, "");
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
+    }
+}
+
+//-------------------------SPI-----------UPDATE
+
 void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
 {
     esp_err_t ret;
@@ -780,36 +811,31 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
         return;
     }
 
-    // Sensor initialization 
     pmw3389_handle_t sensor = NULL;
     ret = pmw3389_init(config, &sensor);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, " Sensor initialization failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Sensor initialization failed: %s", esp_err_to_name(ret));
         return;
     }
 
-    ESP_LOGI(TAG, " Sensor initialized");
+    ESP_LOGI(TAG, "Sensor initialized");
 
-    // Configure sensor
     ret = pmw3389_upload(sensor);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, " Sensor configuration failed");
+        ESP_LOGE(TAG, "Sensor configuration failed");
         pmw3389_deinit(sensor);
         return;
     }
 
-    // Set CPI
     ESP_LOGI(TAG, "Setting CPI to %d...", cpi);
     ret = pmw3389_set_cpi(sensor, cpi);
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, " CPI setting failed: %s", esp_err_to_name(ret));
+        ESP_LOGW(TAG, "CPI setting failed: %s", esp_err_to_name(ret));
     }
     ESP_LOGI(TAG, "");
 
-    // Salva handle del task corrente per ISR
     g_motion_task_handle = xTaskGetCurrentTaskHandle();
 
-    // Statistics
     uint32_t motion_count = 0;
     uint32_t interrupt_count = 0;
     uint32_t false_wake_count = 0;
@@ -818,79 +844,67 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
     
     TickType_t start_time = xTaskGetTickCount();
 
-    // Main loop with interrupt
     while (1) {
-        //wait interrupt
         uint32_t notification_value = ulTaskNotifyTake(
-            pdTRUE,              // Clear notification
-            pdMS_TO_TICKS(5000)  // Timeout 5 s 
+            pdTRUE,
+            pdMS_TO_TICKS(5000)
         );
         
         if (notification_value > 0) {
-    
             interrupt_count++;
             vTaskDelay(pdMS_TO_TICKS(1));
             
-            // read movment data
             pmw3389_motion_data_t motion;
             ret = pmw3389_read_motion(sensor, &motion);
             
             if (ret != ESP_OK) {
-                ESP_LOGE(TAG, " Motion read error: %s", esp_err_to_name(ret));
+                ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
                 continue;
             }
             
-            // verify movment
             if (motion.motion_detected || motion.delta_x != 0 || motion.delta_y != 0) {
-                
                 motion_count++;
                 total_x += motion.delta_x;
                 total_y += motion.delta_y;
                 
-                ESP_LOGI(TAG, " ΔX: %6d | ΔY: %6d | SQUAL: %3%s",
+                ESP_LOGI(TAG, "ΔX: %6d | ΔY: %6d | SQUAL: %3d%s",
                          motion.delta_x,
                          motion.delta_y,
                          motion.squal,
                          motion.lift_detected ? " LIFT" : "");
             } else {
-                // FALSE WAKE 
                 false_wake_count++;
-                ESP_LOGD(TAG, " False wake-up (no motion in registers)");
+                ESP_LOGD(TAG, "False wake-up");
             }
             
-            // Reset flag
             g_motion_interrupt_flag = false;
             
         } else {
-            // TIMEOUT (5 s without movment)
-            // Stampa statistiche
-            
             TickType_t current_time = xTaskGetTickCount();
             uint32_t elapsed_sec = (current_time - start_time) * portTICK_PERIOD_MS / 1000;
             
             if (elapsed_sec > 0) {
                 float avg_motion_per_min = (float)motion_count * 60.0f / elapsed_sec;
                 
-                ESP_LOGI(TAG, " Avg motion/min:   %5.1f  ", avg_motion_per_min);
-                ESP_LOGI(TAG, " Total X:          %6ld counts  ", total_x);
-                ESP_LOGI(TAG, " Total Y:          %6ld counts  ", total_y);
+                ESP_LOGI(TAG, "Avg motion/min:   %5.1f", avg_motion_per_min);
+                ESP_LOGI(TAG, "Total X:          %6ld counts", total_x);
+                ESP_LOGI(TAG, "Total Y:          %6ld counts", total_y);
                 
                 float distance_x_mm = (float)total_x / cpi * 25.4f;
                 float distance_y_mm = (float)total_y / cpi * 25.4f;
                 float total_distance = sqrtf(distance_x_mm * distance_x_mm + 
                                              distance_y_mm * distance_y_mm);
                 
-                ESP_LOGI(TAG, " Distance X:       %6.1f mm          ", distance_x_mm);
-                ESP_LOGI(TAG, " Distance Y:       %6.1f mm          ", distance_y_mm);
-                ESP_LOGI(TAG, " Total distance:   %6.1f mm          ", total_distance);
+                ESP_LOGI(TAG, "Distance X:       %6.1f mm", distance_x_mm);
+                ESP_LOGI(TAG, "Distance Y:       %6.1f mm", distance_y_mm);
+                ESP_LOGI(TAG, "Total distance:   %6.1f mm", total_distance);
                 ESP_LOGI(TAG, "");
-                ESP_LOGI(TAG, " CPU sleeping... (waiting for movement)");
+                ESP_LOGI(TAG, "CPU sleeping...");
                 ESP_LOGI(TAG, "");
             }
         }
     }
 
-    // Cleanup (never reached)
     g_motion_task_handle = NULL;
     pmw3389_deinit(sensor);
 }

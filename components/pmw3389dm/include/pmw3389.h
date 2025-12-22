@@ -7,8 +7,8 @@
  * initialization, motion reading, CPI configuration, and register access.
  * 
  * @author Ilaria
- * @date 2025-12-04
- * @version 2.0
+ * @date 2025-12-21
+ * @version 3.0 - MANUAL CS CONTROL 
  */
 
 #ifndef PMW3389_H
@@ -23,8 +23,8 @@
 extern "C" {
 #endif
 
-//register adresses
-#define PMW3389_REG_PRODUCT_ID          0xFF
+// ==================== REGISTER ADDRESSES ====================
+#define PMW3389_REG_PRODUCT_ID          0x00
 #define PMW3389_REG_REVISION_ID         0x01
 #define PMW3389_REG_MOTION              0x02
 #define PMW3389_REG_DELTA_X_L           0x03
@@ -38,9 +38,7 @@ extern "C" {
 #define PMW3389_REG_SHUTTER_LOWER       0x0B
 #define PMW3389_REG_SHUTTER_UPPER       0x0C
 #define PMW3389_REG_CONTROL             0x0D
-#define PMW3389_REG_CONFIG1             0x0E
-#define PMW3389_REG_RESOLUTION_L        0x0E
-#define PMW3389_REG_RESOLUTION_H        0x0F
+#define PMW3389_REG_CONFIG1             0x0F
 #define PMW3389_REG_CONFIG2             0x10
 #define PMW3389_REG_ANGLE_TUNE          0x11
 #define PMW3389_REG_FRAME_CAPTURE       0x12
@@ -79,18 +77,21 @@ extern "C" {
 #define PMW3389_REG_PWM_PERIOD_CNT      0x73
 #define PMW3389_REG_PWM_WIDTH_CNT       0x74
 
-#define PMW3389_PRODUCT_ID              0x00
-#define PMW3389_INVERSE_PRODUCT_ID      0xB9
+// ==================== PRODUCT IDs ====================
+#define PMW3389_PRODUCT_ID              0x47
+#define PMW3389_INVERSE_PRODUCT_ID      0xB8
 
+// ==================== MOTION REGISTER BITS ====================
 #define PMW3389_MOTION_BIT              (1 << 7)
 #define PMW3389_MOTION_LIFT             (1 << 3)
 #define PMW3389_MOTION_RES              (1 << 2)
 #define PMW3389_MOTION_RVALID           (1 << 0)
 
-#define PMW3389_TSWW    180
-#define PMW3389_TSWR    20
-#define PMW3389_TSRW    20
-#define PMW3389_TSRR    20
+// ==================== TIMING CONSTANTS (μs) ====================
+#define PMW3389_TSWW    180  // Write-to-write delay
+#define PMW3389_TSWR    20   // Write-to-read delay
+#define PMW3389_TSRW    20   // Read-to-write delay
+#define PMW3389_TSRR    20   // Read-to-read delay
 
 /**
  * @brief Structure containing motion data from the sensor
@@ -99,13 +100,12 @@ extern "C" {
  * and motion/lift detection flags from a single sensor reading.
  */
 typedef struct {
-    int16_t delta_x;
-    int16_t delta_y;
-    uint8_t squal;
-    bool motion_detected;
-    bool lift_detected;
+    int16_t delta_x;        ///< X-axis displacement in counts
+    int16_t delta_y;        ///< Y-axis displacement in counts
+    uint8_t squal;          ///< Surface quality (0-255)
+    bool motion_detected;   ///< Motion flag from sensor
+    bool lift_detected;     ///< Lift detection flag
 } pmw3389_motion_data_t;
-
 
 /**
  * @brief Configuration structure for PMW3389 initialization
@@ -114,14 +114,14 @@ typedef struct {
  * needed to initialize the sensor, including SPI settings and GPIO pins.
  */
 typedef struct {
-    spi_host_device_t spi_host;
-    int pin_miso;
-    int pin_mosi;
-    int pin_sclk;
-    int pin_cs;
-    int pin_motion;
-    int pin_reset;
-    int spi_clock_speed_hz;
+    spi_host_device_t spi_host;     ///< SPI host (SPI2_HOST or SPI3_HOST)
+    int pin_miso;                    ///< MISO pin number
+    int pin_mosi;                    ///< MOSI pin number
+    int pin_sclk;                    ///< SCLK pin number
+    int pin_cs;                      ///< CS pin number (manually controlled)
+    int pin_motion;                  ///< Motion interrupt pin (-1 to disable)
+    int pin_reset;                   ///< Reset pin (-1 to disable)
+    int spi_clock_speed_hz;          ///< SPI clock speed in Hz (max 2MHz)
 } pmw3389_config_t;
 
 /**
@@ -130,16 +130,15 @@ typedef struct {
  * This handle represents an initialized PMW3389 sensor instance
  * and must be passed to all driver functions.
  */
+typedef void* pmw3389_handle_t;
 
-typedef struct pmw3389_dev_t* pmw3389_handle_t;
-
+// ==================== CORE FUNCTIONS ====================
 
 /**
- * @brief Initialize the PMW3389 sensor
+ * @brief Initialize the PMW3389 sensor with manual CS control
  * 
- * This function initializes the SPI bus, configures GPIO pins, performs
- * a hardware reset, and verifies communication with the sensor by reading
- * its product ID.
+ * This function initializes the SPI bus, configures GPIO pins, performs hardware reset, and verifies 
+ * communication with the sensor by reading its product ID.
  * 
  * @param config Pointer to configuration structure containing hardware settings
  * @param out_handle Pointer to store the initialized device handle
@@ -151,24 +150,18 @@ typedef struct pmw3389_dev_t* pmw3389_handle_t;
  *     - ESP_ERR_NOT_FOUND if sensor product ID is invalid
  *     - Other ESP_ERR codes for SPI or GPIO errors
  * 
- * @details
- * The initialization sequence includes:
- * - SPI bus initialization with specified pins and clock speed
- * - GPIO configuration for motion interrupt pin (if provided)
- * - Hardware stabilization delay
- * - Sensor reset via shutdown and power-up sequence
- * - Product ID verification (expected: 0x47)
- * - Motion register clearing to prepare for data acquisition
+ * @note CS pin is configured as GPIO output for manual control
+ * @note SPI device is configured with spics_io_num = -1 for manual CS
  * 
- * @usage
  * @code
  * pmw3389_config_t config = {
  *     .spi_host = SPI2_HOST,
- *     .pin_miso = GPIO_NUM_13,
- *     .pin_mosi = GPIO_NUM_11,
- *     .pin_sclk = GPIO_NUM_12,
- *     .pin_cs = GPIO_NUM_10,
- *     .pin_motion = GPIO_NUM_9,
+ *     .pin_miso = GPIO_NUM_37,
+ *     .pin_mosi = GPIO_NUM_35,
+ *     .pin_sclk = GPIO_NUM_36,
+ *     .pin_cs = GPIO_NUM_45,
+ *     .pin_motion = -1,  // Polling mode
+ *     .pin_reset = GPIO_NUM_21,
  *     .spi_clock_speed_hz = 2000000
  * };
  * pmw3389_handle_t sensor;
@@ -177,12 +170,12 @@ typedef struct pmw3389_dev_t* pmw3389_handle_t;
  */
 esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_handle);
 
-
 /**
  * @brief Read a single register from the sensor
  * 
- * Performs a low-level SPI read operation to retrieve the value
- * of a specific register from the PMW3389 sensor.
+ * Performs a low-level SPI read operation with manual CS control.
+ * CS is pulled low, address byte is sent (bit 7 = 0 for read),
+ * data is read, then CS is pulled high.
  * 
  * @param handle Device handle obtained from pmw3389_init()
  * @param addr Register address to read (0x00-0x7F)
@@ -191,13 +184,9 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
  * @return 
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle or data is NULL
- *     - Other ESP_ERR codes for SPI communication errors
  * 
- * @details
- * The function automatically handles the required timing delay (TSRR)
- * after the read operation as specified in the PMW3389 datasheet.
+ * @note Includes proper timing delays as per datasheet
  * 
- * @usage
  * @code
  * uint8_t product_id;
  * esp_err_t ret = pmw3389_read_reg(sensor, PMW3389_REG_PRODUCT_ID, &product_id);
@@ -208,8 +197,9 @@ esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data)
 /**
  * @brief Write a single register to the sensor
  * 
- * Performs a low-level SPI write operation to set the value
- * of a specific register in the PMW3389 sensor.
+ * Performs a low-level SPI write operation with manual CS control.
+ * CS is pulled low, address byte is sent (bit 7 = 1 for write),
+ * data byte is sent, then CS is pulled high.
  * 
  * @param handle Device handle obtained from pmw3389_init()
  * @param addr Register address to write (0x00-0x7F)
@@ -218,13 +208,9 @@ esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data)
  * @return 
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle is NULL
- *     - Other ESP_ERR codes for SPI communication errors
  * 
- * @details
- * The function automatically handles the required timing delay (TSWW)
- * after the write operation as specified in the PMW3389 datasheet.
+ * @note Includes proper timing delays as per datasheet
  * 
- * @usage
  * @code
  * esp_err_t ret = pmw3389_write_reg(sensor, PMW3389_REG_CONFIG1, 0x1F);
  * @endcode
@@ -232,76 +218,26 @@ esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data)
 esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data);
 
 /**
- * @brief Upload SROM firmware to PMW3389 sensor
+ * @brief Upload SROM firmware and configure sensor
  * 
- * This function uploads the complete SROM (Serial ROM) firmware to the PMW3389
- * optical sensor via SPI burst mode. The upload process follows the manufacturer's
- * specified initialization sequence and verifies successful completion by reading
- * the SROM ID register.
- * 
- * @param[in] handle Device handle obtained from pmw3389_init()
- * 
- * @return ESP_OK on successful firmware upload and verification
- * @return ESP_ERR_INVALID_ARG if handle is NULL
- * @return ESP_FAIL if SPI communication fails during any step
- * 
- * @details
- * The firmware upload sequence consists of the following steps:
- * 1. Initialize SROM mode by writing 0x1D to SROM_ENABLE register
- * 2. Start download mode by writing 0x18 to SROM_ENABLE register
- * 3. Upload firmware data via burst write mode (3070 bytes)
- *    - Each byte requires a 15μs delay between transmissions
- *    - Progress is logged every 512 bytes
- * 4. Wait 10ms for sensor to process the firmware
- * 5. Verify upload by reading SROM_ID register
- *    - Expected values: 0x04, 0x05, or 0x06
- * 
- * @note This function should be called during sensor initialization before
- *       configuring operational parameters
- * @note The entire upload process takes approximately 50-60ms to complete
- * @warning Do not interrupt the upload process once started
- * 
- * @code
- * pmw3389_handle_t sensor;
- * esp_err_t ret = pmw3389_init(&sensor, &config);
- * if (ret == ESP_OK) {
- *     ret = pmw3389_upload_srom(sensor);
- *     if (ret == ESP_OK) {
- *         ESP_LOGI(TAG, "Sensor ready for operation");
- *     }
- * }
- * @endcode
- */
-static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle);
-
-/**
- * @brief Configure the sensor for operation in native mode
- * 
- * This function applies optimal configuration settings for the sensor,
- * including rest mode, lift detection, and surface quality thresholds.
- * It prepares the sensor for motion tracking without external SROM firmware.
+ * This function uploads the SROM firmware via burst mode and applies
+ * optimal configuration settings including rest modes, lift detection,
+ * and angle snap disable. Must be called after pmw3389_init().
  * 
  * @param handle Device handle obtained from pmw3389_init()
  * 
  * @return 
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle is NULL
- *     - Other ESP_ERR codes for register access errors
+ *     - ESP_FAIL if SROM verification fails
  * 
- * @details
- * Configuration steps include:
- * - Setting rest mode configuration
- * - Disabling angle snap for raw motion data
- * - Configuring lift detection threshold
- * - Setting surface quality minimum threshold
- * - Configuring power management downshift
- * - Clearing motion registers
+ * @note SROM data must be available in pmw3389_srom.h
+ * @note Upload takes approximately 50-60ms to complete
  * 
- * @usage
  * @code
  * esp_err_t ret = pmw3389_upload(sensor);
  * if (ret == ESP_OK) {
- *     // Sensor is ready for motion tracking
+ *     ESP_LOGI(TAG, "Sensor ready for operation");
  * }
  * @endcode
  */
@@ -311,7 +247,11 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle);
  * @brief Read motion data from the sensor
  * 
  * Retrieves the current motion information including X/Y displacement,
- * surface quality, and motion/lift detection status.
+ * surface quality, and motion/lift detection status. This function triggers
+ * a motion read by writing to the Motion register before reading the delta values.
+ * 
+ * The function reads 8-bit delta values (low bytes only) provide a range
+ * of -128 to +127 counts per read.
  * 
  * @param handle Device handle obtained from pmw3389_init()
  * @param motion_data Pointer to structure to store the motion data
@@ -319,24 +259,19 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle);
  * @return 
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle or motion_data is NULL
- *     - Other ESP_ERR codes for register read errors
  * 
- * @details
- * The function reads multiple registers in sequence:
- * - Motion register (to check motion flag)
- * - Delta X low and high bytes (16-bit signed displacement)
- * - Delta Y low and high bytes (16-bit signed displacement)
- * - Surface quality register (tracking quality metric)
+ * @note Delta values are 8-bit signed integers in counts (range: -128 to +127)
+ * @note Physical displacement in mm = (delta_counts / CPI) * 25.4
+ * @note Function automatically triggers motion register before reading
+ * @note For high-speed movements requiring 16-bit range, consider implementing
+ *       a separate high-speed read function
  * 
- * Delta values are 16-bit signed integers representing movement in counts.
- * The actual physical displacement depends on the configured CPI setting.
- * 
- * @usage
  * @code
  * pmw3389_motion_data_t motion;
  * esp_err_t ret = pmw3389_read_motion(sensor, &motion);
  * if (ret == ESP_OK && motion.motion_detected) {
- *     printf("Movement: X=%d, Y=%d\n", motion.delta_x, motion.delta_y);
+ *     printf("Movement: X=%d, Y=%d, SQUAL=%d\n", 
+ *            motion.delta_x, motion.delta_y, motion.squal);
  * }
  * @endcode
  */
@@ -346,30 +281,21 @@ esp_err_t pmw3389_read_motion(pmw3389_handle_t handle, pmw3389_motion_data_t *mo
  * @brief Set the CPI (Counts Per Inch) resolution
  * 
  * Configures the sensor's tracking resolution. Higher CPI values result
- * in more sensitive motion tracking.
+ * in more sensitive motion tracking. Value is automatically rounded to
+ * nearest multiple of 50.
  * 
  * @param handle Device handle obtained from pmw3389_init()
- * @param cpi Desired CPI value (range: 50-16000, must be multiple of 50)
+ * @param cpi Desired CPI value (range: 50-16000, multiples of 50)
  * 
  * @return 
  *     - ESP_OK on success
- *     - ESP_ERR_INVALID_ARG if handle is NULL or CPI is out of range
- *     - Other ESP_ERR codes for register write errors
+ *     - ESP_ERR_INVALID_ARG if handle is NULL
  * 
- * @details
- * The PMW3389 supports CPI values from 50 to 16000 in increments of 50.
- * If a non-multiple of 50 is provided, the function will round down to
- * the nearest valid value.
+ * @note Out-of-range values are automatically clamped
+ * @note Non-multiples of 50 are rounded down
  * 
- * Common CPI values:
- * - 400-800: Low sensitivity, high precision
- * - 1600: Default, balanced setting
- * - 3200-6400: High sensitivity for gaming
- * - 12000+: Very high sensitivity
- * 
- * @usage
  * @code
- * esp_err_t ret = pmw3389_set_cpi(sensor, 1600);
+ * esp_err_t ret = pmw3389_set_cpi(sensor, 3200);
  * @endcode
  */
 esp_err_t pmw3389_set_cpi(pmw3389_handle_t handle, uint16_t cpi);
@@ -386,16 +312,9 @@ esp_err_t pmw3389_set_cpi(pmw3389_handle_t handle, uint16_t cpi);
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle is NULL
  * 
- * @details
- * The function performs:
- * - Sensor shutdown command
- * - SPI device removal from bus
- * - Memory deallocation
- * 
- * @usage
  * @code
  * pmw3389_deinit(sensor);
- * sensor = NULL; // Handle is no longer valid
+ * sensor = NULL;
  * @endcode
  */
 esp_err_t pmw3389_deinit(pmw3389_handle_t handle);
@@ -412,120 +331,121 @@ esp_err_t pmw3389_deinit(pmw3389_handle_t handle);
  *     - ESP_OK on success
  *     - ESP_ERR_INVALID_ARG if handle is NULL
  * 
- * @details
- * This function is primarily used for debugging and verification.
- * It logs register values to the console via ESP_LOGI.
- * 
- * @usage
  * @code
  * pmw3389_dump_registers(sensor);
  * @endcode
  */
 esp_err_t pmw3389_dump_registers(pmw3389_handle_t handle);
 
+// ==================== TEST FUNCTIONS ====================
 
-/**
- * @brief Run a complete motion test with statistics
+/** POLLING ----------------------------
+ * @brief Run motion test with polling mode
  * 
- * This is a comprehensive test function that initializes the sensor,
- * configures it, and enters a continuous loop reading and displaying
- * motion data with periodic statistics.
+ * Comprehensive test function that initializes the sensor, uploads firmware,
+ * sets CPI, and enters continuous polling loop displaying motion data and
+ * statistics. Runs indefinitely until program termination.
  * 
- * @param config Pointer to configuration structure with hardware settings
- * @param cpi Desired CPI (Counts Per Inch) resolution (50-16000, multiple of 50)
+ * @param config Pointer to sensor configuration structure
+ * @param cpi Desired CPI value (50-16000)
  * 
  * @return 
- *     - ESP_OK on success (never returns in normal operation)
- *     - ESP_ERR_INVALID_ARG if config is NULL or CPI is out of range
- *     - Other ESP_ERR codes for initialization or configuration errors
+ *     - ESP_OK (never returns in normal operation)
+ *     - ESP_ERR codes on initialization failure
  * 
- * @details
- * The function performs:
- * 1. Sensor initialization with provided configuration
- * 2. Sensor configuration upload (native mode)
- * 3. CPI setting
- * 4. Infinite loop reading motion data every 100ms
- * 5. Display motion events (ΔX, ΔY, SQUAL, motion/lift flags)
- * 6. Display statistics every 50 reads (total reads, motion %, cumulative displacement)
+ * @note Function never returns under normal conditions
+ * @note Displays motion events and statistics every 50 reads
+ * @note Alternative to using pmw3389_init_and_configure() + pmw3389_start_motion_tracking()
  * 
- * This function is designed for testing and demonstration purposes.
- * It runs indefinitely until the program is terminated.
- * 
- * @usage
  * @code
- * pmw3389_config_t config = {
- *       .spi_host = SPI2_HOST,
- *       .pin_miso = PIN_MISO,
- *       .pin_mosi = PIN_MOSI,
- *       .pin_sclk = PIN_SCLK,
- *       .pin_cs = PIN_CS,
- *       .pin_motion = PIN_MOTION,
- *       .spi_clock_speed_hz = SPI_CLOCK_SPEED_HZ,
- *   };
+ * pmw3389_config_t config = { ... };
  * pmw3389_test_motion(&config, 3200);
  * @endcode
  */
 esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi);
-
-
+//-------------------------------------------------------
 
 /**
- * @brief Motion interrupt test for PMW3389 sensor
+ * @brief Run motion test with interrupt mode
  * 
- * This function performs a continuous test of the PMW3389 sensor using 
- * hardware interrupts to detect motion. It monitors and logs detailed 
- * statistics about detected movement, including delta X/Y, traveled 
- * distances, and signal quality.
+ * Test function using hardware interrupt for motion detection. CPU sleeps
+ * until motion interrupt occurs, then reads and displays motion data with
+ * detailed statistics including distance calculations.
  * 
- * @param[in] config Pointer to the PMW3389 sensor configuration structure.
- *                   Must not be NULL.
- * @param[in] cpi    CPI (Counts Per Inch) value to set on the sensor.
- *                   Determines the motion detection sensitivity.
+ * @param config Pointer to sensor configuration (pin_motion must be valid)
+ * @param cpi Desired CPI value (50-16000)
  * 
- * @return void      The function does not return (infinite loop) or terminates 
- *                   in case of initialization error.
+ * @note Requires pin_motion to be configured in config
+ * @note Function never returns under normal conditions
+ * @note Displays statistics after 5 seconds of inactivity
+ * @note Calculates physical distances in mm based on CPI
+ * @note This is an OPTIONAL function for interrupt-based applications
  * 
- * @details
- * The function performs the following operations:
- * - Initializes the PMW3389 sensor with the provided configuration
- * - Uploads the sensor configuration
- * - Sets the specified CPI value
- * - Enters an infinite loop that:
- *   - Waits for interrupt notifications from the sensor (5 second timeout)
- *   - Reads motion data when an interrupt is detected
- *   - Calculates and accumulates statistics (total movements, distances, false wake-ups)
- *   - Prints detailed statistics after 5 seconds of inactivity
- * 
- * Monitored statistics:
- * - Total number of detected movements
- * - Total number of received interrupts
- * - False wake-up count (interrupts without actual motion)
- * - Cumulative delta X and Y
- * - Traveled distances in mm (X axis, Y axis, and total)
- * - Average movements per minute
- * - Signal quality (SQUAL) and lift detection
- * 
- * @note
- * - The function uses g_motion_task_handle for communication with the ISR
- * - Requires the sensor interrupt to be properly configured
- * - The function never terminates under normal conditions (infinite loop)
- * - In case of initialization error, the function returns immediately
- * 
- * @usage
  * @code
  * pmw3389_config_t config = {
- *     .spi_host = SPI2_HOST,
- *     .cs_io = GPIO_NUM_5,
- *     .motion_io = GPIO_NUM_4
+ *     .pin_motion = GPIO_NUM_18,
+ *     // ... other pins
  * };
- * 
- * pmw3389_test_motion_interrupt(&config, 1600); // Test with 1600 CPI
+ * pmw3389_test_motion_interrupt(&config, 3200);
  * @endcode
  */
 void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi);
 
+// ==================== HIGH-LEVEL API (RECOMMENDED) ====================
 
+/**
+ * @brief Initialize and configure PMW3389 sensor (all-in-one)
+ * 
+ * This function performs complete sensor setup including hardware initialization,
+ * firmware upload, and CPI configuration in a single call. Ideal for simple
+ * applications that just want to get the sensor working quickly.
+ * 
+ * @param config Pointer to sensor configuration structure
+ * @param cpi Desired CPI value (50-16000)
+ * @param out_handle Pointer to store the initialized and configured sensor handle
+ * 
+ * @return 
+ *     - ESP_OK on success
+ *     - ESP_ERR_INVALID_ARG if config or out_handle is NULL
+ *     - Other ESP_ERR codes for initialization failures
+ * 
+ * @note This function combines pmw3389_init(), pmw3389_upload(), and pmw3389_set_cpi()
+ * @note Recommended for most applications - simplifies setup code
+ * 
+ * @code
+ * pmw3389_config_t config = {
+ *     .spi_host = SPI2_HOST,
+ *     .pin_cs = GPIO_NUM_45,
+ *     // ... other pins
+ * };
+ * pmw3389_handle_t sensor;
+ * esp_err_t ret = pmw3389_init_and_configure(&config, 3200, &sensor);
+ * @endcode
+ */
+esp_err_t pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cpi, pmw3389_handle_t *out_handle);
 
+/**
+ * @brief Start continuous motion tracking in polling mode
+ * 
+ * This function enters an infinite loop that continuously polls the sensor
+ * for motion data and displays it with periodic statistics. Designed for
+ * simple applications that just need basic motion tracking.
+ * 
+ * @param handle Initialized and configured sensor handle
+ * @param poll_interval_ms Polling interval in milliseconds (e.g., 20ms for 50Hz)
+ * 
+ * @note Function never returns under normal conditions
+ * @note Displays motion events when movement is detected
+ * @note Shows statistics every 50 reads
+ * @note Use after pmw3389_init_and_configure() for complete sensor setup
+ * 
+ * @code
+ * pmw3389_handle_t sensor;
+ * pmw3389_init_and_configure(&config, 3200, &sensor);
+ * pmw3389_start_motion_tracking(sensor, 20); // Poll every 20ms (50Hz)
+ * @endcode
+ */
+void pmw3389_start_motion_tracking(pmw3389_handle_t handle, uint32_t poll_interval_ms);
 
 #ifdef __cplusplus
 }
