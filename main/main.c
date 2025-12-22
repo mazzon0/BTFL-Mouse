@@ -24,13 +24,13 @@ static const char *TAG = "PMW3389_MAIN";
 #define PIN_MOSI    GPIO_NUM_35
 #define PIN_SCLK    GPIO_NUM_36
 #define PIN_CS      GPIO_NUM_45
-#define PIN_MOTION  -1            // -1 = Polling mode, GPIO_NUM_18 for interrupt
+#define PIN_MOTION  GPIO_NUM_18        
 #define PIN_RESET   GPIO_NUM_21
 
 // ==================== SENSOR SETTINGS ====================
 #define SPI_CLOCK_SPEED_HZ  2000000  // 2MHz max for PMW3389
 #define DEFAULT_CPI         3200     // Default sensitivity
-#define POLL_INTERVAL_MS    20       // Polling interval (50Hz)
+
 
 /**
  * @brief Main application entry point
@@ -61,7 +61,9 @@ void app_main(void) {
     }
     
     // Start motion tracking (never returns)
-    pmw3389_start_motion_tracking(sensor, POLL_INTERVAL_MS);
+    pmw3389_start_motion_tracking_interrupt(sensor, DEFAULT_CPI);
+
+
     
 
 }

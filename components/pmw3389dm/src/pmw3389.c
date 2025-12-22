@@ -212,14 +212,21 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
 
     // Configure MOTION interrupt pin (if provided)
     if (dev->pin_motion >= 0) {
+        ESP_LOGI(TAG, "Configuring MOTION pin: GPIO%d", dev->pin_motion);
         gpio_config_t io_conf = {
             .pin_bit_mask = (1ULL << dev->pin_motion),
             .mode = GPIO_MODE_INPUT,
             .pull_up_en = GPIO_PULLUP_DISABLE,
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_POSEDGE,
+            .intr_type = GPIO_INTR_ANYEDGE, 
         };
+
         gpio_config(&io_conf);
+         if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to configure MOTION pin: %s", esp_err_to_name(ret));
+            pmw3389_deinit(dev);
+            return ret;
+    }
 
         static bool isr_service_installed = false;
         if (!isr_service_installed) {
@@ -742,63 +749,142 @@ esp_err_t pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cp
     return ESP_OK;
 }
 
-void pmw3389_start_motion_tracking(pmw3389_handle_t handle, uint32_t poll_interval_ms) {
+
+void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t cpi) {
     if (!handle) {
         ESP_LOGE(TAG, "Invalid handle");
         return;
     }
     
-    ESP_LOGI(TAG, "=== MOTION TRACKING START (POLLING MODE) ===");
-    ESP_LOGI(TAG, "Move the sensor to see X/Y movement");
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
+    if (dev->pin_motion < 0) {
+        ESP_LOGE(TAG, "Motion pin not configured! Cannot use interrupt mode.");
+        ESP_LOGE(TAG, "Set pin_motion to a valid GPIO (e.g., GPIO_NUM_18)");
+        return;
+    }
+    
+    ESP_LOGI(TAG, "=== MOTION TRACKING START (INTERRUPT MODE) ===");
+    ESP_LOGI(TAG, "CPU will sleep until motion detected on GPIO%d", dev->pin_motion);
+    ESP_LOGI(TAG, "Move the sensor to trigger interrupts");
     ESP_LOGI(TAG, "");
     
-    uint32_t read_count = 0;
+    // Set the task handle for ISR notifications
+    g_motion_task_handle = xTaskGetCurrentTaskHandle();
+    
     uint32_t motion_count = 0;
+    uint32_t interrupt_count = 0;
+    uint32_t false_wake_count = 0;
     int32_t total_x = 0;
     int32_t total_y = 0;
     
+    TickType_t last_motion_time = xTaskGetTickCount();
+    TickType_t start_time = xTaskGetTickCount();
+    
     while (1) {
-        pmw3389_motion_data_t motion;
+        // Wait for interrupt notification (timeout 5 seconds)
+        uint32_t notification_value = ulTaskNotifyTake(
+            pdTRUE,                  // Clear on exit
+            pdMS_TO_TICKS(5000)      // 5 second timeout
+        );
         
-        esp_err_t ret = pmw3389_read_motion(handle, &motion);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
-            vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
-            continue;
+        if (notification_value > 0) {
+            // Motion interrupt received!
+            interrupt_count++;
+            last_motion_time = xTaskGetTickCount();
+            
+            // Small delay to ensure data is ready
+            vTaskDelay(pdMS_TO_TICKS(1));
+            
+            // Read motion data
+            pmw3389_motion_data_t motion;
+            esp_err_t ret = pmw3389_read_motion(handle, &motion);
+            
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Motion read error: %s", esp_err_to_name(ret));
+                continue;
+            }
+            
+            // Check if there's actual motion
+            if (motion.motion_detected || motion.delta_x != 0 || motion.delta_y != 0) {
+                motion_count++;
+                total_x += motion.delta_x;
+                total_y += motion.delta_y;
+                
+                // Display motion event
+                ESP_LOGI(TAG, "ΔX: %6d | ΔY: %6d | SQUAL: %3d%s",
+                         motion.delta_x,
+                         motion.delta_y,
+                         motion.squal,
+                         motion.lift_detected ? " [LIFT]" : "");
+            } else {
+                // False wake-up (interrupt but no motion data)
+                false_wake_count++;
+                ESP_LOGD(TAG, "False wake-up (interrupt without motion data)");
+            }
+            
+            // Clear the interrupt flag
+            g_motion_interrupt_flag = false;
+            
+            // Display statistics every 50 motion events
+            if (motion_count > 0 && (motion_count % 50) == 0) {
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "--- Statistics ---");
+                ESP_LOGI(TAG, "Motion events:    %lu", motion_count);
+                ESP_LOGI(TAG, "Interrupts:       %lu", interrupt_count);
+                ESP_LOGI(TAG, "False wakes:      %lu (%.1f%%)", 
+                         false_wake_count, 
+                         (float)false_wake_count * 100.0f / interrupt_count);
+                ESP_LOGI(TAG, "Total X:          %ld counts", total_x);
+                ESP_LOGI(TAG, "Total Y:          %ld counts", total_y);
+                
+                // Calculate physical distance
+                float distance_x_mm = (float)total_x / cpi * 25.4f;
+                float distance_y_mm = (float)total_y / cpi * 25.4f;
+                float total_distance = sqrtf(distance_x_mm * distance_x_mm + 
+                                             distance_y_mm * distance_y_mm);
+                
+                ESP_LOGI(TAG, "Distance X:       %.1f mm", distance_x_mm);
+                ESP_LOGI(TAG, "Distance Y:       %.1f mm", distance_y_mm);
+                ESP_LOGI(TAG, "Total distance:   %.1f mm", total_distance);
+                ESP_LOGI(TAG, "");
+            }
+            
+        } else {
+            // Timeout (no motion for 5 seconds)
+            TickType_t current_time = xTaskGetTickCount();
+            uint32_t elapsed_sec = (current_time - start_time) * portTICK_PERIOD_MS / 1000;
+            uint32_t idle_sec = (current_time - last_motion_time) * portTICK_PERIOD_MS / 1000;
+            
+            if (motion_count > 0) {
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "=== IDLE (No motion for %lu seconds) ===", idle_sec);
+                ESP_LOGI(TAG, "Total runtime:    %lu seconds", elapsed_sec);
+                ESP_LOGI(TAG, "Motion events:    %lu", motion_count);
+                ESP_LOGI(TAG, "Avg events/min:   %.1f", 
+                         elapsed_sec > 0 ? (float)motion_count * 60.0f / elapsed_sec : 0.0f);
+                
+                // Calculate physical distance
+                float distance_x_mm = (float)total_x / cpi * 25.4f;
+                float distance_y_mm = (float)total_y / cpi * 25.4f;
+                float total_distance = sqrtf(distance_x_mm * distance_x_mm + 
+                                             distance_y_mm * distance_y_mm);
+                
+                ESP_LOGI(TAG, "Total X:          %ld counts (%.1f mm)", total_x, distance_x_mm);
+                ESP_LOGI(TAG, "Total Y:          %ld counts (%.1f mm)", total_y, distance_y_mm);
+                ESP_LOGI(TAG, "Total distance:   %.1f mm", total_distance);
+                ESP_LOGI(TAG, "");
+                ESP_LOGI(TAG, "CPU sleeping... (waiting for motion)");
+                ESP_LOGI(TAG, "");
+            }
         }
-        
-        read_count++;
-        
-       // Always display SQUAL to diagnose issues
-        if (read_count % 10 == 0) {  // Display every 10 reads (0.2s)
-            ESP_LOGI(TAG, "X: %6d | Y: %6d | SQUAL: %3d | Motion: %s%s",
-                    motion.delta_x,
-                    motion.delta_y,
-                    motion.squal,
-                    motion.motion_detected ? "YES" : "NO",
-                    motion.lift_detected ? " [LIFT]" : "");
-        }
-
-        if (motion.delta_x != 0 || motion.delta_y != 0) {
-            motion_count++;
-            total_x += motion.delta_x;
-            total_y += motion.delta_y;
-        }
-        
-        // Display statistics every 50 reads
-        if (read_count % 50 == 0) {
-            ESP_LOGI(TAG, "--- Statistics (reads: %lu, motions: %lu, %.1f%%) ---",
-                     read_count, 
-                     motion_count,
-                     (float)motion_count * 100.0f / read_count);
-            ESP_LOGI(TAG, "Total displacement - X: %ld | Y: %ld",
-                     total_x, total_y);
-            ESP_LOGI(TAG, "");
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(poll_interval_ms));
     }
+    
+    // Cleanup (never reached in normal operation)
+    g_motion_task_handle = NULL;
 }
+
+
 
 //-------------------------SPI-----------UPDATE
 

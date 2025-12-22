@@ -391,7 +391,7 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi);
  */
 void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi);
 
-// ==================== HIGH-LEVEL API (RECOMMENDED) ====================
+// ==================== HIGH-LEVEL API ====================
 
 /**
  * @brief Initialize and configure PMW3389 sensor (all-in-one)
@@ -424,28 +424,35 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
  */
 esp_err_t pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cpi, pmw3389_handle_t *out_handle);
 
+
 /**
- * @brief Start continuous motion tracking in polling mode
+ * @brief Start motion tracking with hardware interrupt 
  * 
- * This function enters an infinite loop that continuously polls the sensor
- * for motion data and displays it with periodic statistics. Designed for
- * simple applications that just need basic motion tracking.
+ * This function uses hardware interrupts for efficient motion detection.
+ * The CPU sleeps until motion is detected, making it much more power-efficient
+ * than polling mode. Displays motion data and statistics in real-time.
  * 
  * @param handle Initialized and configured sensor handle
- * @param poll_interval_ms Polling interval in milliseconds (e.g., 20ms for 50Hz)
+ * @param cpi CPI value (used for distance calculations in statistics)
  * 
- * @note Function never returns under normal conditions
- * @note Displays motion events when movement is detected
- * @note Shows statistics every 50 reads
- * @note Use after pmw3389_init_and_configure() for complete sensor setup
+ * @return This function never returns under normal conditions
+ * 
+ * @note Requires pin_motion to be configured during pmw3389_init()
+ * @note CPU enters low-power sleep between motion events
+ * @note Displays comprehensive statistics including physical distances
+ * @note Use after pmw3389_init_and_configure() for complete setup
  * 
  * @code
+ * pmw3389_config_t config = {
+ *     .pin_motion = GPIO_NUM_18,  // Must be valid GPIO
+ *     // ... other pins
+ * };
  * pmw3389_handle_t sensor;
  * pmw3389_init_and_configure(&config, 3200, &sensor);
- * pmw3389_start_motion_tracking(sensor, 20); // Poll every 20ms (50Hz)
+ * pmw3389_start_motion_tracking_interrupt(sensor, 3200);
  * @endcode
  */
-void pmw3389_start_motion_tracking(pmw3389_handle_t handle, uint32_t poll_interval_ms);
+void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t cpi);
 
 #ifdef __cplusplus
 }
