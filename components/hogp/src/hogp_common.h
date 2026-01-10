@@ -18,7 +18,7 @@
 #include "nimble/nimble_port_freertos.h"
 
 #include "hogp_user_common.h"
-#include "hogp_results.h"
+#include "hogp_result.h"
 
 /** @brief Tag used for ESP_LOG macros. */
 #define HID_TAG "BLE HID Device"
