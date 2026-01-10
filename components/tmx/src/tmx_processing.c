@@ -7,7 +7,6 @@ static uint32_t s_delta_signal[TMX_M][TMX_N]; //delta signal = filtered - baseli
 static uint32_t s_oversampled_delta[OVERSAMPLED_M][OVERSAMPLED_N]; //oversampled delta signal for blob detection
 static bool visited[OVERSAMPLED_M][OVERSAMPLED_N]; //visited map for flood-fill algorithm
 static tmx_touch_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
-static CircularBuffer_t s_frame_history;
 static tmx_tracker_t s_touch_trackers[MAX_NUM_TOUCHES]; //global blob trackers among frames
 static int s_next_tracker_id = 1;
 static gesture_state_t s_gesture_state = IDLE;
@@ -22,7 +21,6 @@ esp_err_t tmx_processing_init(void)
 {
     //Initialize circular buffer for frame history
     static tmx_touch_t frame_history_buffer[MAX_NUM_FRAMES * MAX_NUM_TOUCHES];
-    cb_init(&s_frame_history, frame_history_buffer, sizeof(tmx_touch_t), MAX_NUM_FRAMES * MAX_NUM_TOUCHES);
     tmx_driver_init();
     vTaskDelay(100 / portTICK_PERIOD_MS); //Wait for touchpad to stabilize
     tmx_processing_raw_read();
@@ -99,7 +97,6 @@ void tmx_processing_print(void){
     tmx_processing_oversampling();
     tmx_processing_blob_detection();
     finger_rejection_filtering();
-    cb_push(&s_frame_history, s_current_frame);
     tmx_processing_associate_blobs(get_current_time_ms());
     tmx_processing_tracker_FSM();
     tmx_gesture_t gesture = tmx_processing_detect_gestures();
