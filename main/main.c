@@ -1,26 +1,82 @@
-#include <stdio.h>
-#include "tmx.h"
+ /**
+ * @file main.c
+ * @brief PMW3389 - Minimal main with function calls only
+ * 
+ * Clean and simple main that uses high-level API functions from pmw3389.c
+ * for sensor initialization and motion tracking. All logic is in the driver.
+ * 
+ * @author Ilaria
+ * @date 2025-12-21
+ * @version 3.0 - Minimal
+ */
 
-void tmx_callback(tmx_gesture_t gesture){
-    // Handle the gesture event
-    switch(gesture.type){
-        case TMX_GESTURE_BUTTON_PRESSED:
-            printf("Callback: BUTTON_PRESSED, %d\n", gesture.button);
-            break;
-        case TMX_GESTURE_BUTTON_RELEASED:
-            printf("Callback: BUTTON_RELEASED, %d\n", gesture.button);
-            break;
-        case TMX_GESTURE_SCROLL:
-            printf("Callback: SCROLL, dx=%d, dy=%d\n", gesture.dx, gesture.dy);
-            break;
-        default:
-            break;
-    }
-}
-void app_main(void)
-{
-    tmx_init();
-    xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "pmw3389.h"
+
+static const char *TAG = "PMW3389_MAIN";
+
+// ==================== PIN CONFIGURATION ====================
+#define PIN_MISO    GPIO_NUM_37
+#define PIN_MOSI    GPIO_NUM_35
+#define PIN_SCLK    GPIO_NUM_36
+#define PIN_CS      GPIO_NUM_45
+#define PIN_MOTION  GPIO_NUM_18        
+#define PIN_RESET   GPIO_NUM_21
+
+// ==================== SENSOR SETTINGS ====================
+#define SPI_CLOCK_SPEED_HZ  2000000  // 2MHz max for PMW3389
+#define DEFAULT_CPI         3200     // Default sensitivity
+
+//----CALLBACK-----
+void my_branch_motion_handler(const pmw3389_motion_data_t *motion, void *user_data) {
+    // Qui gestisci i dati del movimento per il tuo branch
+    printf("Branch callback - X: %d, Y: %d\n", motion->delta_x, motion->delta_y);
     
+    // Puoi usare user_data per passare dati personalizzati
+    int *my_counter = (int *)user_data;
+    (*my_counter)++;
+}
+
+
+/**
+ * @brief Main application entry point
+ */
+void app_main(void) {
+    ESP_LOGI(TAG, "=== PMW3389 with Manual CS Driver ===");
+    ESP_LOGI(TAG, "");
+    
+    int motion_counter = 0;
+
+    // Sensor configuration
+    pmw3389_config_t config = {
+        .spi_host = SPI2_HOST,
+        .pin_miso = PIN_MISO,
+        .pin_mosi = PIN_MOSI,
+        .pin_sclk = PIN_SCLK,
+        .pin_cs = PIN_CS,
+        .pin_motion = PIN_MOTION,
+        .pin_reset = PIN_RESET,
+        .spi_clock_speed_hz = SPI_CLOCK_SPEED_HZ,
+    };
+    
+    pmw3389_handle_t sensor = NULL;
+    
+    // Initialize and configure sensor (all-in-one)
+    esp_err_t ret = pmw3389_init_and_configure(&config, DEFAULT_CPI, &sensor);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Setup failed. Check connections and restart.");
+        return;
+    }
+
+     pmw3389_register_callback(sensor, my_branch_motion_handler, &motion_counter);
+    
+    // Start motion tracking (never returns)
+    pmw3389_start_motion_tracking_interrupt(sensor, DEFAULT_CPI);
+
+
     
 }
