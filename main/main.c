@@ -31,6 +31,16 @@ static const char *TAG = "PMW3389_MAIN";
 #define SPI_CLOCK_SPEED_HZ  2000000  // 2MHz max for PMW3389
 #define DEFAULT_CPI         3200     // Default sensitivity
 
+//----CALLBACK-----
+void my_branch_motion_handler(const pmw3389_motion_data_t *motion, void *user_data) {
+    // Qui gestisci i dati del movimento per il tuo branch
+    printf("Branch callback - X: %d, Y: %d\n", motion->delta_x, motion->delta_y);
+    
+    // Puoi usare user_data per passare dati personalizzati
+    int *my_counter = (int *)user_data;
+    (*my_counter)++;
+}
+
 
 /**
  * @brief Main application entry point
@@ -39,6 +49,8 @@ void app_main(void) {
     ESP_LOGI(TAG, "=== PMW3389 with Manual CS Driver ===");
     ESP_LOGI(TAG, "");
     
+    int motion_counter = 0;
+
     // Sensor configuration
     pmw3389_config_t config = {
         .spi_host = SPI2_HOST,
@@ -59,6 +71,8 @@ void app_main(void) {
         ESP_LOGE(TAG, "Setup failed. Check connections and restart.");
         return;
     }
+
+     pmw3389_register_callback(sensor, my_branch_motion_handler, &motion_counter);
     
     // Start motion tracking (never returns)
     pmw3389_start_motion_tracking_interrupt(sensor, DEFAULT_CPI);

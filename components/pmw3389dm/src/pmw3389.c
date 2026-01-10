@@ -37,6 +37,9 @@ struct pmw3389_dev_t {
     int pin_motion;
     int pin_reset;
     bool initialized;
+
+    pmw3389_motion_callback_t motion_callback;
+    void *callback_user_data;
 };
 
 /**
@@ -574,6 +577,29 @@ esp_err_t pmw3389_set_cpi(pmw3389_handle_t handle, uint16_t cpi) {
     return ESP_OK;
 }
 
+esp_err_t pmw3389_register_callback(pmw3389_handle_t handle, 
+                                     pmw3389_motion_callback_t callback, 
+                                     void *user_data) {
+    if (!handle) {
+        ESP_LOGE(TAG, "Invalid handle");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
+    
+    dev->motion_callback = callback;
+    dev->callback_user_data = user_data;
+    
+    if (callback) {
+        ESP_LOGI(TAG, "Motion callback registered");
+    } else {
+        ESP_LOGI(TAG, "Motion callback unregistered");
+    }
+    
+    return ESP_OK;
+}
+
+
 esp_err_t pmw3389_deinit(pmw3389_handle_t handle) {
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
@@ -810,6 +836,10 @@ void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t c
                 motion_count++;
                 total_x += motion.delta_x;
                 total_y += motion.delta_y;
+
+                  if (dev->motion_callback) {
+                    dev->motion_callback(&motion, dev->callback_user_data);
+                }
                 
                 // Display motion event
                 ESP_LOGI(TAG, "ΔX: %6d | ΔY: %6d | SQUAL: %3d%s",
@@ -994,3 +1024,4 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
     g_motion_task_handle = NULL;
     pmw3389_deinit(sensor);
 }
+

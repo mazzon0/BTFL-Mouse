@@ -424,6 +424,14 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
  */
 esp_err_t pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cpi, pmw3389_handle_t *out_handle);
 
+// CALLBACK
+typedef void (*pmw3389_motion_callback_t)(const pmw3389_motion_data_t *motion_data, void *user_data);
+
+// Funzione per registrare la callback
+esp_err_t pmw3389_register_callback(pmw3389_handle_t handle, 
+                                     pmw3389_motion_callback_t callback, 
+                                     void *user_data);
+
 
 /**
  * @brief Start motion tracking with hardware interrupt 
