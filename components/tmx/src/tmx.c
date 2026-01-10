@@ -41,3 +41,14 @@ tmx_gesture_t tmx_pipeline_process(void)
 
     return gesture;
 }
+
+void tmx_task(void *param){
+    void (*callback)(tmx_gesture_t gesture) = (void (*)(tmx_gesture_t)) param;
+    while (1){
+        tmx_gesture_t gesture = tmx_pipeline_process();
+        if(gesture.type != TMX_GESTURE_NONE){
+            callback(gesture);
+        }
+        vTaskDelay(50 / portTICK_PERIOD_MS);
+    }
+}

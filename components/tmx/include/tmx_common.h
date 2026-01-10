@@ -12,6 +12,7 @@
 #define TMX_N 3
 #define TMX_NUM_TOUCH_PADS (TMX_M * TMX_N)
 
+
 /**
  * @brief Mapping of TMX touch pads to ESP32-S3 touch pad channels.
  */
@@ -55,5 +56,10 @@ typedef struct {
         uint16_t button;
     };
 } tmx_gesture_t;
+
+/**
+ * @brief Callback function type for touch events
+ */
+typedef void (*tmx_callback_t)(tmx_gesture_t gesture);
 
 #endif
