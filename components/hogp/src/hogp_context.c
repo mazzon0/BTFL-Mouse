@@ -4,33 +4,90 @@
 #include "hogp_control_events.h"
 #include <string.h>
 
-int hogp_context_init(const hogp_init_info_t *const init_info) {
-    int rc = 0;
+static bool is_init_info_ok(const hogp_init_info_t *init_info);
+
+hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     hogp_context_t *ctx = hogp_get_context();
     
-    // TODO check init_info and also check device name length
+    if (init_info == NULL) {
+        ERROR("Failed to initialize context: init_info argument is NULL");
+        return HOGP_ERR_INVALID_ARG;
+    }
+
+    if (!is_init_info_ok(init_info)) {
+        return HOGP_ERR_INVALID_ARG;
+    }
+
+    INFO("Initializing HOGP context. Device Name: '%s', Appearance: 0x%04X, Period: %dms", 
+         init_info->device_data.device_name, 
+         init_info->device_data.appearance,
+         init_info->update_period_ms);
 
     ctx->connection = (hogp_conn_t) {0};
     ctx->connection.mtu = 23;
+    ctx->connection.tx_arrived = true;
     ctx->connection.protocol = HOGP_PROTOCOL_REPORT;
     ctx->device.appearance = init_info->device_data.appearance;
     strcpy(ctx->device.device_name, init_info->device_data.device_name);
-    ctx->state = HOGP_STATE_START;
+    ctx->state = HOGP_STATE_IDLE;
     ctx->update_period_ms = init_info->update_period_ms;
+    ctx->hid_state.buttons = 0x00;
 
     ctx->control_queue = xQueueCreate(16, sizeof(hogp_control_event_t));
-    ctx->data_queue = xQueueCreate(32, sizeof(hogp_data_event_t));
+    if (ctx->control_queue == NULL) {
+        ERROR("Failed to create control queue (Out of memory)");
+        return HOGP_ERR_NO_MEM;
+    }
 
-    return rc;
+    ctx->data_queue = xQueueCreate(32, sizeof(hogp_data_event_t));
+    if (ctx->data_queue == NULL) {
+        ERROR("Failed to create data queue (Out of memory)");
+        // Clean up the previously created queue
+        vQueueDelete(ctx->control_queue);
+        ctx->control_queue = NULL;
+        return HOGP_ERR_NO_MEM;
+    }
+
+    INFO("Context initialized successfully");
+    return HOGP_OK;
 }
 
-int hogp_context_shutdown(void) {
-    int rc = 0;
+hogp_result_t hogp_context_shutdown(void) {
     hogp_context_t *ctx = hogp_get_context();
+    INFO("Shutting down HOGP context");
 
-    vQueueDelete(ctx->control_queue);
-    vQueueDelete(ctx->data_queue);
+    if (ctx->control_queue != NULL) {
+        vQueueDelete(ctx->control_queue);
+        ctx->control_queue = NULL;
+    }
+    
+    if (ctx->data_queue != NULL) {
+        vQueueDelete(ctx->data_queue);
+        ctx->data_queue = NULL;
+    }
 
-    *ctx = (hogp_context_t) {0}; // TODO does this really work?
-    return rc;
+    *ctx = (hogp_context_t) {0};
+    
+    INFO("Context shutdown complete");
+    return HOGP_OK;
+}
+
+static bool is_init_info_ok(const hogp_init_info_t *init_info) {
+    // Check appearance
+    if (init_info->device_data.appearance == HOGP_APPEARANCE_CUSTOM || init_info->device_data.appearance == HOGP_APPEARANCE_KEYBOARD) {
+        WARN("The host system may require the mouse appearance to receive mouse messages. If you really need this appearance, be aware that this library only supports mouse messages now");
+        return true;
+    }
+    else if (init_info->device_data.appearance != HOGP_APPEARANCE_MOUSE) {
+        ERROR("The appearence has an invalid value: %d", init_info->device_data.appearance);
+        return false;
+    }
+    
+    // Check name
+    if (strlen(init_info->device_data.device_name) > HOGP_DEVICE_NAME_MAX_CHARACTERS) {
+        ERROR("Device name has too many characters: %d (max is %d)", strlen(init_info->device_data.device_name), HOGP_DEVICE_NAME_MAX_CHARACTERS);
+        return false;
+    }
+
+    return true;
 }
