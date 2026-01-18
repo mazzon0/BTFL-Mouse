@@ -1,82 +1,92 @@
- /**
- * @file main.c
- * @brief PMW3389 - Minimal main with function calls only
- * 
- * Clean and simple main that uses high-level API functions from pmw3389.c
- * for sensor initialization and motion tracking. All logic is in the driver.
- * 
- * @author Ilaria
- * @date 2025-12-21
- * @version 3.0 - Minimal
- */
-
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "hogp.h"
+#include "tmx.h"
 #include "esp_log.h"
-#include "esp_system.h"
-#include "pmw3389.h"
+#include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
 
-static const char *TAG = "PMW3389_MAIN";
+void tmx_callback(tmx_gesture_t gesture){
+    // Handle the gesture event
+    hogp_data_event_t event;
 
-// ==================== PIN CONFIGURATION ====================
-#define PIN_MISO    GPIO_NUM_37
-#define PIN_MOSI    GPIO_NUM_35
-#define PIN_SCLK    GPIO_NUM_36
-#define PIN_CS      GPIO_NUM_45
-#define PIN_MOTION  GPIO_NUM_18        
-#define PIN_RESET   GPIO_NUM_21
+    switch(gesture.type){
+        case TMX_GESTURE_BUTTON_PRESSED:
+            event.type = HOGP_DEVT_MOUSE_BUTTON_PRESSED;
+            event.button = gesture.button;
+            ESP_LOGI("Mouse", "Sending button pressed: %d", event.button);
+            hogp_send(&event);
+            break;
 
-// ==================== SENSOR SETTINGS ====================
-#define SPI_CLOCK_SPEED_HZ  2000000  // 2MHz max for PMW3389
-#define DEFAULT_CPI         3200     // Default sensitivity
+        case TMX_GESTURE_BUTTON_RELEASED:
+            event.type = HOGP_DEVT_MOUSE_BUTTON_RELEASED;
+            event.button = gesture.button;
+            ESP_LOGI("Mouse", "Sending button released: %d", event.button);
+            hogp_send(&event);
+            break;
 
-//----CALLBACK-----
-void my_branch_motion_handler(const pmw3389_motion_data_t *motion, void *user_data) {
-    // Qui gestisci i dati del movimento per il tuo branch
-    printf("Branch callback - X: %d, Y: %d\n", motion->delta_x, motion->delta_y);
-    
-    // Puoi usare user_data per passare dati personalizzati
-    int *my_counter = (int *)user_data;
-    (*my_counter)++;
+        case TMX_GESTURE_SCROLL:
+            event.type = HOGP_DEVT_SCROLL_MOTION;
+            event.x = gesture.dx;
+            event.y = gesture.dy;
+            ESP_LOGI("Mouse", "Sending scroll: %d, %d", event.x, event.y);
+            hogp_send(&event);
+            break;
+
+        default:
+            break;
+    }
 }
 
+void bt_connection_cb(bool connected) {
+    if (connected) {
+        ESP_LOGI("Mouse", "Connected");
+    }
+    else {
+        ESP_LOGI("Mouse", "Disconnected");
+    }
+}
 
-/**
- * @brief Main application entry point
- */
+void bt_suspension_cb(bool suspended) {
+    if (suspended) {
+        ESP_LOGI("Mouse", "Suspended");
+    }
+    else {
+        ESP_LOGI("Mouse", "Not suspended");
+    }
+}
+
 void app_main(void) {
-    ESP_LOGI(TAG, "=== PMW3389 with Manual CS Driver ===");
-    ESP_LOGI(TAG, "");
-    
-    int motion_counter = 0;
-
-    // Sensor configuration
-    pmw3389_config_t config = {
-        .spi_host = SPI2_HOST,
-        .pin_miso = PIN_MISO,
-        .pin_mosi = PIN_MOSI,
-        .pin_sclk = PIN_SCLK,
-        .pin_cs = PIN_CS,
-        .pin_motion = PIN_MOTION,
-        .pin_reset = PIN_RESET,
-        .spi_clock_speed_hz = SPI_CLOCK_SPEED_HZ,
-    };
-    
-    pmw3389_handle_t sensor = NULL;
-    
-    // Initialize and configure sensor (all-in-one)
-    esp_err_t ret = pmw3389_init_and_configure(&config, DEFAULT_CPI, &sensor);
+    // Init the NVS flash (required for Bluetooth bonding)
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Setup failed. Check connections and restart.");
-        return;
+        ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
     }
 
-     pmw3389_register_callback(sensor, my_branch_motion_handler, &motion_counter);
-    
-    // Start motion tracking (never returns)
-    pmw3389_start_motion_tracking_interrupt(sensor, DEFAULT_CPI);
+    // Init the HOGP component
+    hogp_init_info_t hogp_init_info = {
+        .device_data = (hogp_device_data_t) {
+            .device_name = "BTFL Mouse",
+            .appearance = HOGP_APPEARANCE_MOUSE,
+            .connected_cb = bt_connection_cb,
+            .suspended_cb = bt_suspension_cb,
+        },
+        .update_period_ms = 10,
+    };
 
+    hogp_result_t res = hogp_setup(&hogp_init_info);
+    if (res != HOGP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
+    }
+
+    // Init touch driver and task
+    tmx_init();
+    xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
     
+
+    // Shutdown HOGP component
+    //hogp_shutdown();
 }

@@ -394,7 +394,7 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
                 if(t->is_pressed_reported == false){
                     bool right = (t->current_y < OVERSAMPLED_M/2)?1:0;
                     gesture.type = TMX_GESTURE_BUTTON_PRESSED;
-                    gesture.button = right ? 2 : 0; //Right button : Left button
+                    gesture.button = right ? 1 : 0; //Right button : Left button
                     t->is_pressed_reported = true;
                 }
             } else if (t->state == MOTION_ACTIVE){ //single swipe -- for now not implemented
@@ -402,7 +402,7 @@ tmx_gesture_t tmx_processing_detect_gestures(void){
             } else if(t->state == TRACK_RELEASED){ //button release
                 gesture.type = TMX_GESTURE_BUTTON_RELEASED;
                 bool right = (t->current_y < OVERSAMPLED_M/2)?1:0;
-                gesture.button = right ? 2 : 0; //Right button : Left button
+                gesture.button = right ? 1 : 0; //Right button : Left button
                 s_gesture_state = IDLE;
 
                 for(int j = 0; j < MAX_NUM_TOUCHES; j++) {
