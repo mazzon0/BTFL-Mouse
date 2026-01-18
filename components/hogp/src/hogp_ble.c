@@ -262,20 +262,7 @@ hogp_result_t hogp_connect(uint16_t handle) {
     }
 
     ctx->connection.conn_handle = handle;
-    INFO("Connection handle updated: %d", ctx->connection.conn_handle);
-
-    struct ble_gap_upd_params params = {
-        .itvl_min = desc.conn_itvl,
-        .itvl_max = desc.conn_itvl,
-        .latency = 3,
-        .supervision_timeout = desc.supervision_timeout,
-    };
-
-    rc = ble_gap_update_params(handle, &params);
-    if (rc != 0) {
-        ERROR("Failed to update connection parameters, error code: %d", rc);
-        return HOGP_ERR_INTERNAL_FAIL;
-    }
+    INFO("Connection parameters: itvl (%d), superivsion timeout: (%d)", desc.conn_itvl, desc.supervision_timeout);
 
     return HOGP_OK;
 }
