@@ -36,23 +36,7 @@ void tmx_callback(tmx_gesture_t gesture){
     }
 }
 
-void bt_connection_cb(bool connected) {
-    if (connected) {
-        ESP_LOGI("Mouse", "Connected");
-    }
-    else {
-        ESP_LOGI("Mouse", "Disconnected");
-    }
-}
 
-void bt_suspension_cb(bool suspended) {
-    if (suspended) {
-        ESP_LOGI("Mouse", "Suspended");
-    }
-    else {
-        ESP_LOGI("Mouse", "Not suspended");
-    }
-}
 
 void app_main(void) {
     // Init the NVS flash (required for Bluetooth bonding)
@@ -70,8 +54,6 @@ void app_main(void) {
         .device_data = (hogp_device_data_t) {
             .device_name = "BTFL Mouse",
             .appearance = HOGP_APPEARANCE_MOUSE,
-            .connected_cb = bt_connection_cb,
-            .suspended_cb = bt_suspension_cb,
         },
         .update_period_ms = 10,
     };
