@@ -79,3 +79,4 @@ hogp_result_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t
 hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type);
 
 #endif /* HOGP_BLE_H */
+

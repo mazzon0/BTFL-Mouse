@@ -15,7 +15,7 @@
 #define HOGP_APPEARANCE_CUSTOM      0x03c0
 
 #include <stdint.h>
-#include "hogp_results.h"
+#include "hogp_result.h"
 
 /**
  * @brief Configuration data defining the device's appearance and name.
