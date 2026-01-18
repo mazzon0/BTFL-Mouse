@@ -148,6 +148,7 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
                 if (err != HOGP_OK) {
                     ERROR("Failed to store connection data");
                 }
+                else if (ctx->connected_cb != NULL) ctx->connected_cb(true);
             }
             else if (e.type == HOGP_CEVT_ADV_COMPLETE) {
                 WARN("ADV_COMPLETE → restarting advertising");
@@ -159,10 +160,12 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
             if (e.type == HOGP_CEVT_DISCONNECT) {
                 INFO("Transition CONNECTED → START (disconnect)");
                 ctx->state = HOGP_STATE_START;
+                if (ctx->connected_cb!= NULL) ctx->connected_cb(false);
             }
             else if (e.type == HOGP_CEVT_SUSPEND && e.suspended) {
                 INFO("Transition CONNECTED → SUSPENDED");
                 ctx->state = HOGP_STATE_SUSPENDED;
+                if (ctx->suspended_cb != NULL) ctx->suspended_cb(true);
             }
             else if (e.type == HOGP_CEVT_SHUTDOWN) {
                 INFO("Transition CONNECTED → CLOSED");
@@ -174,10 +177,12 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
             if (e.type == HOGP_CEVT_DISCONNECT) {
                 INFO("Transition SUSPENDED → START");
                 ctx->state = HOGP_STATE_START;
+                if (ctx->connected_cb!= NULL) ctx->connected_cb(false);
             }
             else if (e.type == HOGP_CEVT_SUSPEND && !e.suspended) {
                 INFO("Transition SUSPENDED → CONNECTED");
                 ctx->state = HOGP_STATE_CONNECTED;
+                if (ctx->suspended_cb != NULL) ctx->suspended_cb(false);
             }
             else if (e.type == HOGP_CEVT_SHUTDOWN) {
                 INFO("Transition SUSPENDED → CLOSED");

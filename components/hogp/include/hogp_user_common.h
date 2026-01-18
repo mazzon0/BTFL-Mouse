@@ -15,7 +15,18 @@
 #define HOGP_APPEARANCE_CUSTOM      0x03c0
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "hogp_result.h"
+
+/**
+ * @brief Pointer type to a function that handles Bluetooth connection event
+ */
+typedef void (*hogp_connected_fn)(bool connected);
+
+/**
+ * @brief Pointer type to a function that handles Bluetooth suspension event
+ */
+typedef void (*hogp_suspended_fn)(bool suspended);
 
 /**
  * @brief Configuration data defining the device's appearance and name.
@@ -33,6 +44,8 @@ typedef struct {
 typedef struct {
     hogp_device_data_t device_data;         /**< Device appearance settings (name, category like Mouse/Keyboard). */
     uint16_t update_period_ms;              /**< The cycle time (in ms) for the main HOGP FreeRTOS task loop. */
+    hogp_connected_fn connected_cb;                    /**< Callback to handle Bluetooth connection events (set to NULL for no callback) */
+    hogp_suspended_fn suspended_cb;                    /**< Callback to handle Bluetooth suspension events (set to NULL for no callback) */
 } hogp_init_info_t;
 
 #endif /* HOGP_DEFINES_H */

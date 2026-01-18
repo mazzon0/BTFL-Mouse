@@ -18,7 +18,6 @@
 #include "nimble/nimble_port_freertos.h"
 
 #include "hogp_user_common.h"
-#include "hogp_result.h"
 
 /** @brief Tag used for ESP_LOG macros. */
 #define HID_TAG "BLE HID Device"
@@ -144,6 +143,8 @@ typedef struct {
     hogp_state_t state;            /**< Current FSM state. */
     QueueHandle_t control_queue;   /**< Queue for internal control events (connect, disconnect). */
     QueueHandle_t data_queue;      /**< Queue for user data events (mouse motion, clicks). */
+    hogp_connected_fn connected_cb;/**< Callback for connection events */
+    hogp_suspended_fn suspended_cb;/**< Callback for suspension events */
     uint32_t update_period_ms;     /**< Main task loop delay in milliseconds. */
     hogp_hid_state_t hid_state;    /**< Current HID state */
 } hogp_context_t;

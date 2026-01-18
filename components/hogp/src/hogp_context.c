@@ -32,6 +32,8 @@ hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     ctx->state = HOGP_STATE_IDLE;
     ctx->update_period_ms = init_info->update_period_ms;
     ctx->hid_state.buttons = 0x00;
+    ctx->connected_cb = init_info->connected_cb;
+    ctx->suspended_cb = init_info->suspended_cb;
 
     ctx->control_queue = xQueueCreate(16, sizeof(hogp_control_event_t));
     if (ctx->control_queue == NULL) {

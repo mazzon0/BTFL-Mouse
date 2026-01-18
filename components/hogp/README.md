@@ -23,6 +23,9 @@ Here is an simple example of a component using the HOGP component.
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 
+void bt_connection_cb(bool connected);
+void bt_suspension_cb(bool suspended);
+
 void app_main(void) {
     // Init the NVS flash (required for bonding)
     esp_err_t ret = nvs_flash_init();
@@ -40,6 +43,8 @@ void app_main(void) {
             .device_name = "BTFL Mouse",
             .appearance = HOGP_APPEARANCE_MOUSE,
         },
+        .connected_cb = bt_connection_cb,
+        .suspended_cb = bt_suspension_cb,
         .update_period_ms = 10,
     };
 
@@ -62,6 +67,16 @@ void app_main(void) {
     // Shutdown HOGP component
     hogp_shutdown();
 }
+
+void bt_connection_cb(bool connected) {
+    if (connected) SP_LOGI("Mouse", "Connected");
+    else ESP_LOGI("Mouse", "Disconnected");
+}
+
+void bt_suspension_cb(bool suspended) {
+    if (suspended) ESP_LOGI("Mouse", "Suspended");
+    else ESP_LOGI("Mouse", "Not suspended");
+}
 ```
 The provided component needs this CMakeLists.txt.
 ```CMakeLists.txt
@@ -77,4 +92,3 @@ Future features will be:
 - support for keyboard events and other types of HID events
 - send the battery level to the host
 - boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)
-- add callbacks to inform the system of upcoming events from the host
