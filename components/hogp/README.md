@@ -3,9 +3,9 @@ An easy-to-use ESP-IDF component for implementing Bluetooth Low Energy (BLE) HID
 
 ## Features
 - Simplified Initialization: Set up a fully functional BLE HID device with a single configuration struct.
-- Thread-Safe API: hogp_send_data can be called from any task or ISR.
+- Thread-Safe API: `hogp_send()` can be called from any task or ISR.
 - Power efficient: only sends updates if there are changes and the host is listening.
-- Mouse Input: Supports relative cursor movement, scroll wheels, and up to 8 mouse buttons.
+- Mouse Input: Supports cursor movement, vertical and horizontal scrolling, and up to 8 mouse buttons.
 
 ## Installation
 Create a components folder in your ESP-IDF project (if it doesn't exist). Clone or copy this repository into ```components/hogp```. The component will be automatically detected by the ESP-IDF build system via the provided CMakeLists.txt.
@@ -69,13 +69,13 @@ void app_main(void) {
 }
 
 void bt_connection_cb(bool connected) {
-    if (connected) SP_LOGI("Mouse", "Connected");
-    else ESP_LOGI("Mouse", "Disconnected");
+    if (connected) ESP_LOGI("my_project", "Connected");
+    else ESP_LOGI("my_project", "Disconnected");
 }
 
 void bt_suspension_cb(bool suspended) {
-    if (suspended) ESP_LOGI("Mouse", "Suspended");
-    else ESP_LOGI("Mouse", "Not suspended");
+    if (suspended) ESP_LOGI("my_project", "Suspended");
+    else ESP_LOGI("my_project", "Not suspended");
 }
 ```
 The provided component needs this CMakeLists.txt.

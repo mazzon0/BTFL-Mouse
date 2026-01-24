@@ -1,4 +1,63 @@
 #include "hogp.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
+
+void bt_connection_cb(bool connected);
+void bt_suspension_cb(bool suspended);
+
+void app_main(void) {
+    // Init the NVS flash (required for bonding)
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
+    }
+
+    // Init the HOGP component
+    hogp_init_info_t hogp_init_info= {
+        .device_data = (hogp_device_data_t) {
+            .device_name = "BTFL Mouse",
+            .appearance = HOGP_APPEARANCE_MOUSE,
+        },
+        .connected_cb = bt_connection_cb,
+        .suspended_cb = bt_suspension_cb,
+        .update_period_ms = 10,
+    };
+
+    hogp_result_t res = hogp_setup(&hogp_init_info);
+    if (res != HOGP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
+    }
+
+    // Send events to the Bluetooth host
+    hogp_data_event_t event;
+    event.type = HOGP_DEVT_BATTERY_LEVEL_UPDATE;
+    event.battery_level = 50;
+
+    for (int i = 0; i < 64; i++) {
+        hogp_send(&event);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+
+    // Shutdown HOGP component
+    hogp_shutdown();
+}
+
+void bt_connection_cb(bool connected) {
+    if (connected) ESP_LOGI("my_project", "Connected");
+    else ESP_LOGI("my_project", "Disconnected");
+}
+
+void bt_suspension_cb(bool suspended) {
+    if (suspended) ESP_LOGI("my_project", "Suspended");
+    else ESP_LOGI("my_project", "Not suspended");
+}
+
+/*#include "hogp.h"
 #include "tmx.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -89,4 +148,4 @@ void app_main(void) {
 
     // Shutdown HOGP component
     //hogp_shutdown();
-}
+}*/
