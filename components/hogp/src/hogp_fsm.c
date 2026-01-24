@@ -93,7 +93,7 @@ void hogp_task(void *params) {
                 //WARN("Unhandled state %d", ctx->state);
         }
 
-        vTaskDelay(ctx->update_period_ms / portTICK_PERIOD_MS);
+        vTaskDelay(ctx->register_period_ms / portTICK_PERIOD_MS);
     }
 
     INFO("HOGP task exiting");

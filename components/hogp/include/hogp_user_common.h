@@ -43,9 +43,10 @@ typedef struct {
  */
 typedef struct {
     hogp_device_data_t device_data;         /**< Device appearance settings (name, category like Mouse/Keyboard). */
-    uint16_t update_period_ms;              /**< The cycle time (in ms) for the main HOGP FreeRTOS task loop. */
-    hogp_connected_fn connected_cb;                    /**< Callback to handle Bluetooth connection events (set to NULL for no callback) */
-    hogp_suspended_fn suspended_cb;                    /**< Callback to handle Bluetooth suspension events (set to NULL for no callback) */
+    uint16_t register_period_ms;            /**< The cycle time (in ms) for the HOGP FSM task (how frequently messages are registered to be sent) */
+    uint16_t transmit_period_ms;            /**< The cycle time (in ms) for the NimBLE stack task (how frequently messages are sent to the host) */
+    hogp_connected_fn connected_cb;         /**< Callback to handle Bluetooth connection events (set to NULL for no callback) */
+    hogp_suspended_fn suspended_cb;         /**< Callback to handle Bluetooth suspension events (set to NULL for no callback) */
 } hogp_init_info_t;
 
 #endif /* HOGP_DEFINES_H */

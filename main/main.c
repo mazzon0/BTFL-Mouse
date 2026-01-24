@@ -25,7 +25,8 @@ void app_main(void) {
         },
         .connected_cb = bt_connection_cb,
         .suspended_cb = bt_suspension_cb,
-        .update_period_ms = 10,
+        .register_period_ms = 10,
+        .transmit_period_ms = 20,
     };
 
     hogp_result_t res = hogp_setup(&hogp_init_info);

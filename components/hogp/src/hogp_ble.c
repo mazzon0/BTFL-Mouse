@@ -40,6 +40,9 @@ hogp_handles_t handles;     // handles for the ble definitions
 #define HOGP_USB_HID_VERSION_MAJOR_BCD  0x01
 #define HOGP_USB_HID_VERSION_MINOR_BCD  0x11
 
+// Time Conversions
+#define BLE_ITVL_FROM_MS(ms)   (((ms) * 4 + 2) / 5)
+
 // NimBLE Prototypes
 void ble_store_config_init(void);
 
@@ -50,6 +53,9 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg);
 
 // Utility functions
 static void set_service_uuids(void);
+
+// Tasks
+static void hogp_update_params_task(void *params);
 
 // Host access callbacks
 static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -254,7 +260,7 @@ hogp_result_t hogp_start_advertising(void) {
 
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500); // TODO test 8 and 15
+    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500);
     adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(510);
 
     rc = ble_gap_adv_start(ctx->connection.own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event_callback, NULL);
@@ -279,6 +285,11 @@ hogp_result_t hogp_connect(uint16_t handle) {
 
     ctx->connection.conn_handle = handle;
     INFO("Connection parameters: itvl (%d), superivsion timeout: (%d)", desc.conn_itvl, desc.supervision_timeout);
+    
+    // Creates task for negotiating the itvl value (if the current value is not accepted)
+    uint16_t target_itvl = BLE_ITVL_FROM_MS(ctx->transmit_period_ms);
+    if (target_itvl - 1 > desc.conn_itvl || desc.conn_itvl < target_itvl + 1)
+        xTaskCreate(hogp_update_params_task, "HOGP ITVL", 4 * 1024, NULL, 3, NULL);
 
     return HOGP_OK;
 }
@@ -314,7 +325,6 @@ hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
         if (handles.values[i] == handle) break;
     }
 
-    INFO("%d %d %d %d", handles.values[0], handles.values[1], handles.values[2], handles.values[3]);
     if (i == HOGP_HANDLE_COUNT) {
         WARN("Received subscription for unknown handle: %d", handle);
         return HOGP_OK; 
@@ -329,6 +339,34 @@ hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
     INFO("Subscription event handled (handle: %d)", handle);
 
     return HOGP_OK;
+}
+
+static void hogp_update_params_task(void *params) {
+
+    // Waits 1000ms
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    hogp_context_t *ctx = hogp_get_context();
+
+    struct ble_gap_conn_desc desc;
+    if (ble_gap_conn_find(ctx->connection.conn_handle, &desc) != 0) {    // Continue only if still connected
+        vTaskDelete(NULL);
+    }
+
+    // Update itvl value
+    uint16_t new_itvl = BLE_ITVL_FROM_MS(ctx->transmit_period_ms);
+    struct ble_gap_upd_params new_params = {
+        .itvl_min = new_itvl - 1,
+        .itvl_max = new_itvl + 1,
+        .latency  = 0,
+        .supervision_timeout = desc.supervision_timeout,
+    };
+
+    if (ble_gap_update_params(ctx->connection.conn_handle, &new_params) != 0) {
+        ERROR("ITVL update failed");
+    }
+
+    vTaskDelete(NULL);
 }
 
 

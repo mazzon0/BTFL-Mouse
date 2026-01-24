@@ -21,7 +21,7 @@ hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     INFO("Initializing HOGP context. Device Name: '%s', Appearance: 0x%04X, Period: %dms", 
          init_info->device_data.device_name, 
          init_info->device_data.appearance,
-         init_info->update_period_ms);
+         init_info->register_period_ms);
 
     ctx->connection = (hogp_conn_t) {0};
     ctx->connection.mtu = 23;
@@ -30,7 +30,8 @@ hogp_result_t hogp_context_init(const hogp_init_info_t *init_info) {
     ctx->device.appearance = init_info->device_data.appearance;
     strcpy(ctx->device.device_name, init_info->device_data.device_name);
     ctx->state = HOGP_STATE_IDLE;
-    ctx->update_period_ms = init_info->update_period_ms;
+    ctx->register_period_ms = init_info->register_period_ms;
+    ctx->transmit_period_ms = init_info->transmit_period_ms;
     ctx->hid_state.buttons = 0x00;
     ctx->connected_cb = init_info->connected_cb;
     ctx->suspended_cb = init_info->suspended_cb;

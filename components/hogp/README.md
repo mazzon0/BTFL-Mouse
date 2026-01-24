@@ -6,6 +6,7 @@ An easy-to-use ESP-IDF component for implementing Bluetooth Low Energy (BLE) HID
 - Thread-Safe API: `hogp_send()` can be called from any task or ISR.
 - Power efficient: only sends updates if there are changes and the host is listening.
 - Mouse Input: Supports cursor movement, vertical and horizontal scrolling, and up to 8 mouse buttons.
+- Battery Level: Support sending the battery level to the host.
 
 ## Installation
 Create a components folder in your ESP-IDF project (if it doesn't exist). Clone or copy this repository into ```components/hogp```. The component will be automatically detected by the ESP-IDF build system via the provided CMakeLists.txt.
@@ -45,7 +46,8 @@ void app_main(void) {
         },
         .connected_cb = bt_connection_cb,
         .suspended_cb = bt_suspension_cb,
-        .update_period_ms = 10,
+        .register_period_ms = 10,
+        .transmit_period_ms = 10,
     };
 
     hogp_result_t res = hogp_setup(&hogp_init_info);
@@ -87,8 +89,6 @@ idf_component_register(SRCS "main.c"
 ## Incoming Features
 Future features will be:
 - support for Windows and MacOS
-- selecting the actual frequency of messages (right now only the frequency of the FSM can be chosen by the user)
 - composing multiple events in a single message, in order to save energy
 - support for keyboard events and other types of HID events
-- send the battery level to the host
 - boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)

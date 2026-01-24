@@ -162,7 +162,8 @@ typedef struct {
     QueueHandle_t data_queue;      /**< Queue for user data events (mouse motion, clicks). */
     hogp_connected_fn connected_cb;/**< Callback for connection events */
     hogp_suspended_fn suspended_cb;/**< Callback for suspension events */
-    uint32_t update_period_ms;     /**< Main task loop delay in milliseconds. */
+    uint16_t register_period_ms;   /**< Main task loop delay in milliseconds */
+    uint16_t transmit_period_ms;   /**< BLE stack task delay in milliseconds */
     hogp_hid_state_t hid_state;    /**< Current HID state */
 } hogp_context_t;
 
