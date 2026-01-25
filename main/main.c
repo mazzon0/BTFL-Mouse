@@ -32,7 +32,7 @@ void tmx_callback(tmx_gesture_t gesture){
             break;
 
         default:
-            break;
+            break; 
     }
 }
 
