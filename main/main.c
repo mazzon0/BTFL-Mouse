@@ -78,7 +78,7 @@ static bool sensor_active;
  * @return void
  * @details The function is called after 5 minutes of inactivity. It lowers the
  * CPU frequency and disables bluetooth and touch features.
- * @codevoid set_system_power_state(bool high_performance) {
+ * @codevoid low_power_consumption_state(bool high_performance) {
     if (high_performance) { // Active state
         // Set CPU frequency range
         esp_pm_config_esp32s3_t pm_config = {
@@ -135,7 +135,7 @@ static bool sensor_active;
     }
 }
  */
-void set_system_power_state(bool high_performance) {
+void low_power_consumption_state(bool high_performance) {
     if (high_performance) { /* Active state*/
         /* Set CPU frequency range*/
         esp_pm_config_esp32s3_t pm_config = {
@@ -274,7 +274,7 @@ static void enter_deep_sleep(void) {
     if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
         // low power consumption
         cur_state = LOW_POWER_CONSUMPTION;
-        set_system_power_state();
+        low_power_consumption_state();
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
         cur_state = DEEP_SLEEP;
         enter_deep_sleep(); 
@@ -291,7 +291,7 @@ static void check_inactivity(void) {
     if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
         /* low power consumption */
         cur_state = LOW_POWER_CONSUMPTION;
-        set_system_power_state();
+        low_power_consumption_state();
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
         cur_state = DEEP_SLEEP;
         enter_deep_sleep(); 
@@ -414,6 +414,8 @@ void app_main(void) {
         .appearance = HOGP_APPEARANCE_MOUSE,
         .device_name = "BTFL Mouse"
     };
+
+
 
     
     cur_state = START;
