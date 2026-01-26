@@ -1,20 +1,21 @@
-//#include "hogp.h"
-#include "power_supply.h"
-#include "power_supply.c"
-#include "pmw3389.h"
-#include "esp_sleep.h"
+#include "hogp.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
+#include "freertos/FreeRTOS.h"
+#include "tmx.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "pmw3389.h"
+
+#include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "esp_timer.h"
 
+//le prossime servono??
 #include "esp_pm.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "driver/touch_pad.h"
-
-#include "esp_pm.h"
-
-#include "freertos/task.h"
 
 static const char *TAG = "PowerSave";
 
@@ -357,7 +358,21 @@ void fn_START(void) {
     xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
     /* Init optical sensor and task */
-    ret = pmw3389_init_and_configure(&sensor_config, 3200, &g_sensor_handle);
+    // Configure sensor pins
+    pmw3389_config_t config = {
+        .spi_host = SPI2_HOST,
+        .pin_miso = GPIO_NUM_37,
+        .pin_mosi = GPIO_NUM_35,
+        .pin_sclk = GPIO_NUM_36,
+        .pin_cs = GPIO_NUM_45,
+        .pin_motion = GPIO_NUM_18,        // Optional
+        .pin_reset = GPIO_NUM_21,         // Optional
+        .spi_clock_speed_hz = 2000000,    // 2MHz max
+    };
+
+    pmw3389_handle_t sensor = NULL;
+
+    ret = pmw3389_init_and_configure(&config, 3200, &sensor_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "PMW3389 init failed: %s", esp_err_to_name(ret));
     }
@@ -368,9 +383,9 @@ void fn_START(void) {
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to register motion callback");
     }
-    // xTaskCreate non serve??
-    //---->xTaskCreate(pmw3389_start_motion_tracking_interrupt , "pmw3389_event_task", 4096, NULL, 5, NULL);
-
+    pmw3389_start_motion_tracking_interrupt(sensor, 3200);
+    // quindi per questo non serve una xTaskCreate????
+    
     last_event_time = esp_timer_get_time()/1000;
 
     cur_state = WORKING;
