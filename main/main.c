@@ -34,7 +34,7 @@ static const char *TAG = "PowerSave";
 
 //Global variables
 static int64_t last_event_time;
-bool high_performance;
+static bool high_performance;
 
 /**
  * Motion reading
@@ -169,18 +169,17 @@ void config_low_power_consumption(bool high_performance) {
             }
 
         /* 2. Disable Bluetooth (if previously initialized)*/
-        /* Turning off Bluetooth (Bluedroid)*/
+        /* Turning off Bluetooth (Bluedroid) ---- immagino si possa cancellare da qua:
         if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
-            esp_bluedroid_disable(); /* Disable Bluetooth software features*/
-            esp_bluedroid_deinit(); /* Free up RAM allocated for Bluetooth*/
+            esp_bluedroid_disable(); /* Disable Bluetooth software features
+            esp_bluedroid_deinit(); /* Free up RAM allocated for Bluetooth
         }
-        /* Turning off the Bluetooth Controller (Hardware)*/
+        /* Turning off the Bluetooth Controller (Hardware)
         if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
-            esp_bt_controller_disable(); /* Phisically turns off the Bluetooth radio module*/
-            esp_bt_controller_deinit(); /* Deinitializes the hardware controller driver*/
-        }
-        // O basta :
-        hogp_shutdown(); // ?
+            esp_bt_controller_disable(); /* Phisically turns off the Bluetooth radio module
+            esp_bt_controller_deinit(); /* Deinitializes the hardware controller driver
+        } ----fino a qua ???? */
+        hogp_shutdown();
         ESP_LOGI(TAG, "Bluetooth disabled");
 
         /* 3. Disable Touch Sensor*/
@@ -330,8 +329,16 @@ void fn_START(void) {
     config_low_power_consumption(high_performance);
 
     esp_err_t ret;
-
-    /* Init HOGP library and task */
+    // Init the NVS flash (required for bonding)
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
+    }
+    /* Init the HOGP component */
     hogp_init_info_t hogp_init_info = {
         .n_mice = 1,
         .n_keyboards = 0,
@@ -340,14 +347,16 @@ void fn_START(void) {
         .appearance = HOGP_APPEARANCE_MOUSE,
         .device_name = "BTFL Mouse"
     };
-    hogp_setup(const hogp_init_info_t *const init_info);
+    res = hogp_setup(&hogp_init_info);
+    if (res != HOGP_OK) {
+        ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
+    }
 
     /* Init touch driver and task */
     tmx_init();
     xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
     /* Init optical sensor and task */
-
     ret = pmw3389_init_and_configure(&sensor_config, 3200, &g_sensor_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "PMW3389 init failed: %s", esp_err_to_name(ret));
@@ -374,6 +383,17 @@ void fn_WORKING(void) {
     inoltre sarebbe da controllare non ci siano trasferimenti
     bluetooth mentre va in low_power_consumption*/
     while(1) {
+        // Send events to the Bluetooth host
+        hogp_data_event_t event;
+        event.type = HOGP_DEVT_CURSOR_MOTION;
+        event.x = 16;
+        event.y = 16;
+
+        for (int i = 0; i < 64; i++) {
+            hogp_send(&event);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+
         check_inactivity();
     }
 }
