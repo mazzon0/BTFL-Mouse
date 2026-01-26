@@ -33,9 +33,8 @@ static const char *TAG = "PowerSave";
 #define POLLING_RATE_MS 10	// 100Hz polling
 
 //Global variables
-static volatile bool motion_detected;
-static int64_t last_motion_time;
-static bool sensor_active;
+static int64_t last_event_time;
+bool high_performance;
 
 /**
  * Motion reading
@@ -72,13 +71,13 @@ static bool sensor_active;
  * Power mode functions
  */
 /**
- * @brief Enter Low Power Mode
+ * @brief Configure Low Power Mode
  * 
  * @param bool high_performance
  * @return void
  * @details The function is called after 5 minutes of inactivity. It lowers the
  * CPU frequency and disables bluetooth and touch features.
- * @codevoid low_power_consumption_state(bool high_performance) {
+ * @codevoid config_low_power_consumption(bool high_performance) {
     if (high_performance) { // Active state
         // Set CPU frequency range
         esp_pm_config_esp32s3_t pm_config = {
@@ -135,7 +134,7 @@ static bool sensor_active;
     }
 }
  */
-void low_power_consumption_state(bool high_performance) {
+void config_low_power_consumption(bool high_performance) {
     if (high_performance) { /* Active state*/
         /* Set CPU frequency range*/
         esp_pm_config_esp32s3_t pm_config = {
@@ -213,10 +212,6 @@ void low_power_consumption_state(bool high_performance) {
  * 
  * @code
  * static void enter_deep_sleep(void) {
-    // Put sensor in shutdown
-    pmw3389_shutdown();
-    pmw3389_clear_motion();
-   
     // Configure GPIO18 as RTC GPIO
     rtc_gpio_init(PIN_MOTION);
     rtc_gpio_set_direction(PIN_MOTION, RTC_GPIO_MODE_INPUT_ONLY);
@@ -276,10 +271,8 @@ static void enter_deep_sleep(void) {
  * @endcode
  */
 static void check_inactivity(void) {
-    if (!sensor_active) return;
-   
     int64_t current_time = esp_timer_get_time() / 1000;  // Convert to ms
-    int64_t inactive_time = current_time - last_motion_time;
+    int64_t inactive_time = current_time - last_event_time;
    
     if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
         /* low power consumption mode */
@@ -287,33 +280,10 @@ static void check_inactivity(void) {
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
         /* deep sleep mode */
         cur_state = DEEP_SLEEP;
+    } else {
+        config_low_power_consumption(high_performance);
     }
 }
-
-//Main sensor polling task --- SI PUO CANCELLARE?
-/* static void sensor_task(void *arg) {
-    last_motion_time = esp_timer_get_time() / 1000;
-   
-    while (1) {
-        /* Handle motion interrupt
-        if (motion_detected) {
-            motion_detected = false;
-            if (!sensor_active) {
-                cur_state = START;
-                pmw3389_wakeup();
-            }
-        }
-       
-        /* Read motion if sensor is active
-        if (sensor_active) {
-            pmw3389_read_motion();
-            check_inactivity();
-        }
-       
-        vTaskDelay(pdMS_TO_TICKS(POLLING_RATE_MS));  // ~100Hz polling
-    }
-} 
-*/
 
 /**
  * Define states and state machine structure
@@ -336,7 +306,7 @@ typedef struct {
  * Declare fucitions that implement states, variable to hold
  * current state and the state machine itself.
  */
-/* State machine function prototypes*/
+/* State machine function prototypes */
 void fn_START(void);
 void fn_WORKING(void);
 void fn_DEEP_SLEEP(void);
@@ -356,9 +326,12 @@ StateMachine_t StateMachine[] = {
 
 /* State functions */
 void fn_START(void) {
+    high_performance = true;
+    config_low_power_consumption(high_performance);
+
     esp_err_t ret;
 
-    /* Init HOGP library and task*/
+    /* Init HOGP library and task */
     hogp_init_info_t hogp_init_info = {
         .n_mice = 1,
         .n_keyboards = 0,
@@ -373,7 +346,7 @@ void fn_START(void) {
     tmx_init();
     xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
-    /* Init optical sensor and task*/
+    /* Init optical sensor and task */
 
     ret = pmw3389_init_and_configure(&sensor_config, 3200, &g_sensor_handle);
     if (ret != ESP_OK) {
@@ -387,43 +360,43 @@ void fn_START(void) {
         ESP_LOGW(TAG, "Failed to register motion callback");
     }
     // xTaskCreate non serve??
-    xTaskCreate(pmw3389_start_motion_tracking_interrupt , "pmw3389_event_task", 4096, NULL, 5, NULL);
+    //---->xTaskCreate(pmw3389_start_motion_tracking_interrupt , "pmw3389_event_task", 4096, NULL, 5, NULL);
 
-    motion_detected = false;
-    last_motion_time = esp_timer_get_time()/1000;
-    sensor_active = true;
+    last_event_time = esp_timer_get_time()/1000;
 
     cur_state = WORKING;
 }
 
 void fn_WORKING(void) {
-    /*altro?*/
-    check_inactivity();
+    /* altro? non credo. forse serve che il codice 
+    di ilaria e di fede mi modifichi il last event time
+    in caso di movimento da sensore ottico o touch.
+    inoltre sarebbe da controllare non ci siano trasferimenti
+    bluetooth mentre va in low_power_consumption*/
+    while(1) {
+        check_inactivity();
+    }
 }
 
 void fn_DEEP_SLEEP(void) {
+    sensor_active = false;
     enter_deep_sleep(); 
     /* Following line never executed */
     cur_state = START; 
 }
 
 void fn_LOW_POWER_CONSUMPTION(void) {
-    low_power_consumption_state();
+    config_low_power_consumption(!high_performance);
     cur_state = START;
 }
 
 void fn_OFF(void) {
-    /* Battery code ??? */
+    /* Codice batteria ??? */
 
     cur_state = START;
 }
 
 void app_main(void) {
-    
-
-
-
-    
     cur_state = START;
     while(1) {
         if(cur_state < NUM_STATES) {
@@ -433,11 +406,7 @@ void app_main(void) {
         }
     }
     
-    
-    
     /* hogp_setup(&hogp_init_info);
 
     vTaskDelay(100000 / portTICK_PERIOD_MS); */
-
-    
 }
