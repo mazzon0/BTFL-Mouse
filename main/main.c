@@ -123,6 +123,8 @@ static bool sensor_active;
             esp_bt_controller_disable(); // Phisically turns off the Bluetooth radio module
             esp_bt_controller_deinit(); // Deinitializes the hardware controller driver
         }
+        // O basta :
+        hogp_shutdown(); // ?
         ESP_LOGI(TAG, "Bluetooth disabled");
 
         // 3. Disable Touch Sensor
@@ -178,6 +180,8 @@ void set_system_power_state(bool high_performance) {
             esp_bt_controller_disable(); /* Phisically turns off the Bluetooth radio module*/
             esp_bt_controller_deinit(); /* Deinitializes the hardware controller driver*/
         }
+        // O basta :
+        hogp_shutdown(); // ?
         ESP_LOGI(TAG, "Bluetooth disabled");
 
         /* 3. Disable Touch Sensor*/
@@ -399,16 +403,7 @@ void fn_OFF(void) {
 }
 
 void app_main(void) {
-    cur_state = START;
-    while(1) {
-        if(cur_state < NUM_STATES) {
-        (*StateMachine[cur_state].func) ();
-    } else {
-        /* error */
-    }
-    }
-    
-    /*hogp_init_info_t hogp_init_info = {
+    hogp_init_info_t hogp_init_info = {
         .n_mice = 1,
         .n_keyboards = 0,
         .n_customs = 0,
@@ -417,9 +412,21 @@ void app_main(void) {
         .device_name = "BTFL Mouse"
     };
 
-    hogp_setup(&hogp_init_info);
+    
+    cur_state = START;
+    while(1) {
+        if(cur_state < NUM_STATES) {
+        (*StateMachine[cur_state].func) ();
+        } else {
+            /* error */
+        }
+    }
+    
+    
+    
+    /* hogp_setup(&hogp_init_info);
 
-    vTaskDelay(100000 / portTICK_PERIOD_MS);
+    vTaskDelay(100000 / portTICK_PERIOD_MS); */
 
-    hogp_shutdown(); */
+    
 }
