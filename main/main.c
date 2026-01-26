@@ -78,28 +78,60 @@ static bool sensor_active;
  * @return void
  * @details The function is called after 5 minutes of inactivity. It lowers the
  * CPU frequency and disables bluetooth and touch features.
- * @code void configure_Low_Power_Mode() {
-    esp_pm_config_esp32s3_t pm_config = {
-        .max_freq_mhz = 240,
-        .min_freq_mhz = 160,
-        .light_sleep_enable = false
-    };
-    
-    esp_err_t err = esp_pm_configure(&pm_config);
-    if (err == ESP_OK) ;
+ * @codevoid set_system_power_state(bool high_performance) {
+    if (high_performance) { // Active state
+        // Set CPU frequency range
+        esp_pm_config_esp32s3_t pm_config = {
+        .max_freq_mhz = 240,       // Maximum frequence
+        .min_freq_mhz = 160,       // Minimum frequence
+        .light_sleep_enable = false // Optional: allows automated light sleep
+        };
+        esp_err_t err = esp_pm_configure(&pm_config); //Apply the frequency limits
+        ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "CPU frequence configured (Max:240MHz, Min:160MHz)");
+        }
 
-    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
-        esp_bluedroid_disable();
-        esp_bluedroid_deinit();
-    }
-    if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
-        esp_bt_controller_disable();
-        esp_bt_controller_deinit();
-    }
+        // Activate Bluetooth (if necessary)
+        if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_IDLE) {
+            esp_bt_controller_enable(ESP_BT_MODE_BLE);
+            esp_bluedroid_enable(); // Enable Bluetooth software features
+        }
+        ESP_LOGI(TAG, "Bluetooth activated");
+        touch_pad_fsm_start();
+    } else { // Inactive state
+        // 1. Lower CPU frequency
+        esp_pm_config_esp32s3_t pm_config = {
+            .max_freq_mhz = 80,       // Maximum frequence
+            .min_freq_mhz = 40,       // Minimum frequence
+            .light_sleep_enable = false // Optional: allows automated light sleep
+            };
+            esp_err_t err = esp_pm_configure(&pm_config); // Apply the frequency limits
+            ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+            if (err == ESP_OK) {
+                ESP_LOGI(TAG, "CPU frequence configured (Max:80MHz, Min:40MHz)");
+            }
 
-    touch_pad_fsm_stop(); 
+        // 2. Disable Bluetooth (if previously initialized)
+        // Turning off Bluetooth (Bluedroid)
+        if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
+            esp_bluedroid_disable(); // Disable Bluetooth software features
+            esp_bluedroid_deinit(); // Free up RAM allocated for Bluetooth
+        }
+        // Turning off the Bluetooth Controller (Hardware)
+        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
+            esp_bt_controller_disable(); // Phisically turns off the Bluetooth radio module
+            esp_bt_controller_deinit(); // Deinitializes the hardware controller driver
+        }
+        ESP_LOGI(TAG, "Bluetooth disabled");
+
+        // 3. Disable Touch Sensor
+        // If the touch sensor is active, we turn it off to save power in the RTC domain
+        touch_pad_fsm_stop(); 
+        // In alternativa si puo usare: touch_sensor_disable(); con esp-idf v5.0+ se stai usando driver/touch_sens.h
+        ESP_LOGI(TAG, "Touch sensor disabled");
+    }
 }
- * void 
  */
 void set_system_power_state(bool high_performance) {
     if (high_performance) { /* Active state*/
