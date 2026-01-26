@@ -387,24 +387,21 @@ void fn_START(void) {
 }
 
 void fn_WORKING(void) {
-    /*..*/
+    /*altro?*/
     check_inactivity(void);
 }
 
 void fn_DEEP_SLEEP(void) {
-    /*..*/
-
     cur_state = START; /* Qua non credo questo serva questo stato ? visto che quando
     si sveglia da deep sleep resetta in automatico ? */
 
 void fn_LOW_POWER_CONSUMPTION(void) {
-    /*..*/
     check_inactivity(void);
     cur_state = START;
 }
 
 void fn_OFF(void) {
-    /* Battery code */
+    /* Battery code ??? */
 
     cur_state = START;
 }
