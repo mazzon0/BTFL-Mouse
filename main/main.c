@@ -271,9 +271,12 @@ static void enter_deep_sleep(void) {
     int64_t current_time = esp_timer_get_time() / 1000;  // Convert to ms
     int64_t inactive_time = current_time - last_motion_time;
    
-    if (inactive_time > INACTIVITY_TIMEOUT_MS_LS) {
-        enter_light_sleep();
+    if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
+        // low power consumption
+        cur_state = LOW_POWER_CONSUMPTION;
+        set_system_power_state();
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
+        cur_state = DEEP_SLEEP;
         enter_deep_sleep(); 
     }
 }
