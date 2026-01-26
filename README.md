@@ -1,4 +1,3 @@
-# BTFL Mouse
+# power modes management
 
-This is a group project with the ultimate goal of building a beautiful mouse.
-The platform is an ESP32 S3 DevKitC 1.
+La parte di components a questo punto non dovrebbe servire e non è più aggiornata, in quanto sono passata direttamente a lavorare sul main
