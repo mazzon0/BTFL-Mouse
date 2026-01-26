@@ -233,11 +233,7 @@ void low_power_consumption_state(bool high_performance) {
 }
 @endcode
  */
-static void enter_deep_sleep(void) {   
-    /* Put sensor in shutdown */
-    pmw3389_shutdown();
-    pmw3389_clear_motion();
-   
+static void enter_deep_sleep(void) {      
     /* Configure GPIO18 as RTC GPIO */
     rtc_gpio_init(PIN_MOTION);
     rtc_gpio_set_direction(PIN_MOTION, RTC_GPIO_MODE_INPUT_ONLY);
@@ -272,12 +268,9 @@ static void enter_deep_sleep(void) {
     int64_t inactive_time = current_time - last_motion_time;
    
     if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
-        // low power consumption
         cur_state = LOW_POWER_CONSUMPTION;
-        low_power_consumption_state();
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
         cur_state = DEEP_SLEEP;
-        enter_deep_sleep(); 
     }
 }
  * @endcode
@@ -289,12 +282,11 @@ static void check_inactivity(void) {
     int64_t inactive_time = current_time - last_motion_time;
    
     if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM) {
-        /* low power consumption */
+        /* low power consumption mode */
         cur_state = LOW_POWER_CONSUMPTION;
-        low_power_consumption_state();
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
+        /* deep sleep mode */
         cur_state = DEEP_SLEEP;
-        enter_deep_sleep(); 
     }
 }
 
@@ -355,16 +347,26 @@ void fn_OFF(void);
 State_t cur_state;
 
 StateMachine_t StateMachine[] = {
-    {START, fm_START()},
-    {WORKING, fm_WORKING()},
-    {DEEP_SLEEP, fm_DEEP_SLEEP()},
-    {LOW_POWER_CONSUMPTION, fm_LOW_POWER_CONSUMPTION()},
-    {OFF, fn_OFF()}
+    {START, fn_START},
+    {WORKING, fn_WORKING},
+    {DEEP_SLEEP, fn_DEEP_SLEEP},
+    {LOW_POWER_CONSUMPTION, fn_LOW_POWER_CONSUMPTION},
+    {OFF, fn_OFF}
 };
 
 /* State functions */
 void fn_START(void) {
+    esp_err_t ret;
+
     /* Init HOGP library and task*/
+    hogp_init_info_t hogp_init_info = {
+        .n_mice = 1,
+        .n_keyboards = 0,
+        .n_customs = 0,
+        .update_period_ms = 10,
+        .appearance = HOGP_APPEARANCE_MOUSE,
+        .device_name = "BTFL Mouse"
+    };
     hogp_setup(const hogp_init_info_t *const init_info);
 
     /* Init touch driver and task */
@@ -372,15 +374,23 @@ void fn_START(void) {
     xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
     /* Init optical sensor and task*/
-    pmw3389_init_and_configure(const pmw3389_config_t *config, uint16_t cpi, pmw3389_handle_t *out_handle);
+
+    ret = pmw3389_init_and_configure(&sensor_config, 3200, &g_sensor_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "PMW3389 init failed: %s", esp_err_to_name(ret));
+    }
     /* Funzione per registrare la callback */
-    esp_err_t pmw3389_register_callback(pmw3389_handle_t handle, 
+    ret = pmw3389_register_callback(pmw3389_handle_t handle, 
                                         pmw3389_motion_callback_t callback, 
                                         void *user_data);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to register motion callback");
+    }
+    // xTaskCreate non serve??
     xTaskCreate(pmw3389_start_motion_tracking_interrupt , "pmw3389_event_task", 4096, NULL, 5, NULL);
 
     motion_detected = false;
-    last_motion_time = 0;
+    last_motion_time = esp_timer_get_time()/1000;
     sensor_active = true;
 
     cur_state = WORKING;
@@ -388,15 +398,17 @@ void fn_START(void) {
 
 void fn_WORKING(void) {
     /*altro?*/
-    check_inactivity(void);
+    check_inactivity();
 }
 
 void fn_DEEP_SLEEP(void) {
-    cur_state = START; /* Qua non credo questo serva questo stato ? visto che quando
-    si sveglia da deep sleep resetta in automatico ? */
+    enter_deep_sleep(); 
+    /* Following line never executed */
+    cur_state = START; 
+}
 
 void fn_LOW_POWER_CONSUMPTION(void) {
-    check_inactivity(void);
+    low_power_consumption_state();
     cur_state = START;
 }
 
@@ -407,14 +419,7 @@ void fn_OFF(void) {
 }
 
 void app_main(void) {
-    hogp_init_info_t hogp_init_info = {
-        .n_mice = 1,
-        .n_keyboards = 0,
-        .n_customs = 0,
-        .update_period_ms = 10,
-        .appearance = HOGP_APPEARANCE_MOUSE,
-        .device_name = "BTFL Mouse"
-    };
+    
 
 
 
