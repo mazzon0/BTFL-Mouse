@@ -3,8 +3,6 @@
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "tmx.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
 #include "pmw3389.h"
 
 #include "esp_sleep.h"
@@ -285,6 +283,38 @@ static void check_inactivity(void) {
     }
 }
 
+void tmx_callback(tmx_gesture_t gesture) {
+    // Handle the gesture event
+    hogp_data_event_t event;
+
+    switch(gesture.type){
+        case TMX_GESTURE_BUTTON_PRESSED:
+            event.type = HOGP_DEVT_MOUSE_BUTTON_PRESSED;
+            event.button = gesture.button;
+            ESP_LOGI("Mouse", "Sending button pressed: %d", event.button);
+            hogp_send(&event);
+            break;
+
+        case TMX_GESTURE_BUTTON_RELEASED:
+            event.type = HOGP_DEVT_MOUSE_BUTTON_RELEASED;
+            event.button = gesture.button;
+            ESP_LOGI("Mouse", "Sending button released: %d", event.button);
+            hogp_send(&event);
+            break;
+
+        case TMX_GESTURE_SCROLL:
+            event.type = HOGP_DEVT_SCROLL_MOTION;
+            event.x = gesture.dx;
+            event.y = gesture.dy;
+            ESP_LOGI("Mouse", "Sending scroll: %d, %d", event.x, event.y);
+            hogp_send(&event);
+            break;
+
+        default:
+            break; 
+    }
+}
+
 /**
  * Define states and state machine structure
  */
@@ -339,16 +369,17 @@ void fn_START(void) {
     if (ret != ESP_OK) {
         ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
     }
-    /* Init the HOGP component */
+
+    // Init the HOGP component
     hogp_init_info_t hogp_init_info = {
-        .n_mice = 1,
-        .n_keyboards = 0,
-        .n_customs = 0,
+        .device_data = (hogp_device_data_t) {
+            .device_name = "BTFL Mouse",
+            .appearance = HOGP_APPEARANCE_MOUSE,
+        },
         .update_period_ms = 10,
-        .appearance = HOGP_APPEARANCE_MOUSE,
-        .device_name = "BTFL Mouse"
     };
-    res = hogp_setup(&hogp_init_info);
+
+    hogp_result_t res = hogp_setup(&hogp_init_info);
     if (res != HOGP_OK) {
         ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
     }
