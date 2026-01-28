@@ -190,7 +190,6 @@ void config_low_power_consumption(bool high_performance) {
  * @details This function prepares the ESP32 and the PMW3389 sensor for Deep Sleep.
  * This power-saving mode turns off both the CPU and RAM. When the device is
  * woke up it starts the program execution from the very beginning, so it behaves as a reset.
- * The sensor enters its lowest power state and clears its internal "motion detected" bit.
  * GPIO18 is configurd as RTC GPIO, is set as an input, so it can listen for the
  * sensor's signal, and its internal resistors are disabled - to leave the pin in a
  * high-impedance state (floating), preventing leakage  currents that could drain
@@ -244,7 +243,7 @@ static void enter_deep_sleep(void) {
  * 
  * @details If the sensor is active, the function calulates the inactive_time.
  * If the time since the last motion detected exceedes 5 minutes, enter Light Sleep mode,
- * if it exceedes 10 minutes, enter Deep Sleep mode.
+ * if it exceedes 10 minutes, enter Deep Sleep mode. Else it goes back to high performance state.
  * 
  * @code
  * static void check_inactivity(void) {
@@ -257,6 +256,8 @@ static void enter_deep_sleep(void) {
         cur_state = LOW_POWER_CONSUMPTION;
     } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
         cur_state = DEEP_SLEEP;
+    } else {
+        ccurr_state = WORKING;
     }
 }
  * @endcode
@@ -272,7 +273,7 @@ static void check_inactivity(void) {
         /* deep sleep mode */
         cur_state = DEEP_SLEEP;
     } else {
-        config_low_power_consumption(high_performance);
+        curr_state = WORKING;
     }
 }
 
@@ -319,7 +320,7 @@ void tmx_callback(tmx_gesture_t gesture) {
  * @details This function handles interrupts from the sensor internally.
  * 
  * @code static void sensor_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Task sensore avviato");
+    ESP_LOGI(TAG, "Sensor task started");
 
     pmw2289_start_motion_tracking_interrupt(sensor_handle, 3200);
     vTaskDelete(NULL);
@@ -327,7 +328,7 @@ void tmx_callback(tmx_gesture_t gesture) {
  * @endcode
  */
 static void sensor_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Task sensore avviato");
+    ESP_LOGI(TAG, "Sensor task started");
 
     pmw2289_start_motion_tracking_interrupt(sensor_handle, 3200);
     vTaskDelete(NULL);
@@ -506,7 +507,7 @@ void fn_DEEP_SLEEP(void) {
 
 void fn_LOW_POWER_CONSUMPTION(void) {
     config_low_power_consumption(!high_performance);
-    cur_state = START;
+    check_inactivity();
 }
 
 void fn_OFF(void) {
