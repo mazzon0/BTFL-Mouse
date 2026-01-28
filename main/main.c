@@ -32,8 +32,10 @@ static const char *TAG = "PowerSave";
 #define POLLING_RATE_MS 10	// 100Hz polling
 
 //Global variables
+static const char *TAG = "PowerSave";
 static int64_t last_event_time;
 static bool high_performance;
+static pmw3389_handle_t sensor_handle = NULL; // Handle to communicate with the sensor
 
 /**
  * Motion reading
@@ -76,7 +78,7 @@ static bool high_performance;
  * @return void
  * @details The function is called after 5 minutes of inactivity. It lowers the
  * CPU frequency and disables bluetooth and touch features.
- * @codevoid config_low_power_consumption(bool high_performance) {
+ * @code void config_low_power_consumption(bool high_performance) {
     if (high_performance) { // Active state
         // Set CPU frequency range
         esp_pm_config_esp32s3_t pm_config = {
@@ -84,7 +86,7 @@ static bool high_performance;
         .min_freq_mhz = 160,       // Minimum frequence
         .light_sleep_enable = false // Optional: allows automated light sleep
         };
-        esp_err_t err = esp_pm_configure(&pm_config); //Apply the frequency limits
+        esp_err_t err = esp_pm_configure(&pm_config); // Apply the frequency limits
         ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "CPU frequence configured (Max:240MHz, Min:160MHz)");
@@ -98,7 +100,7 @@ static bool high_performance;
         ESP_LOGI(TAG, "Bluetooth activated");
         touch_pad_fsm_start();
     } else { // Inactive state
-        // 1. Lower CPU frequency
+        // 1. Lower CPU frequenc
         esp_pm_config_esp32s3_t pm_config = {
             .max_freq_mhz = 80,       // Maximum frequence
             .min_freq_mhz = 40,       // Minimum frequence
@@ -111,7 +113,7 @@ static bool high_performance;
             }
 
         // 2. Disable Bluetooth (if previously initialized)
-        // Turning off Bluetooth (Bluedroid)
+        /* Turning off Bluetooth (Bluedroid) ---- immagino si possa cancellare da qua:
         if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
             esp_bluedroid_disable(); // Disable Bluetooth software features
             esp_bluedroid_deinit(); // Free up RAM allocated for Bluetooth
@@ -120,14 +122,13 @@ static bool high_performance;
         if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
             esp_bt_controller_disable(); // Phisically turns off the Bluetooth radio module
             esp_bt_controller_deinit(); // Deinitializes the hardware controller driver
-        }
-        // O basta :
-        hogp_shutdown(); // ?
+        } ----fino a qua ???? 
+        hogp_shutdown();
         ESP_LOGI(TAG, "Bluetooth disabled");
 
         // 3. Disable Touch Sensor
         // If the touch sensor is active, we turn it off to save power in the RTC domain
-        touch_pad_fsm_stop(); 
+        touch_pad_fsm_stop();  
         // In alternativa si puo usare: touch_sensor_disable(); con esp-idf v5.0+ se stai usando driver/touch_sens.h
         ESP_LOGI(TAG, "Touch sensor disabled");
     }
@@ -167,24 +168,14 @@ void config_low_power_consumption(bool high_performance) {
                 ESP_LOGI(TAG, "CPU frequence configured (Max:80MHz, Min:40MHz)");
             }
 
-        /* 2. Disable Bluetooth (if previously initialized)*/
-        /* Turning off Bluetooth (Bluedroid) ---- immagino si possa cancellare da qua:
-        if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED) {
-            esp_bluedroid_disable(); /* Disable Bluetooth software features
-            esp_bluedroid_deinit(); /* Free up RAM allocated for Bluetooth
-        }
-        /* Turning off the Bluetooth Controller (Hardware)
-        if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED) {
-            esp_bt_controller_disable(); /* Phisically turns off the Bluetooth radio module
-            esp_bt_controller_deinit(); /* Deinitializes the hardware controller driver
-        } ----fino a qua ???? */
+        /* 2. Disable Bluetooth */
         hogp_shutdown();
         ESP_LOGI(TAG, "Bluetooth disabled");
 
-        /* 3. Disable Touch Sensor*/
-        /* If the touch sensor is active, we turn it off to save power in the RTC domain*/
+        /* 3. Disable Touch Sensor */
+        /* If the touch sensor is active, we turn it off to save power in the RTC domain */
         touch_pad_fsm_stop(); 
-        // In alternativa si puo usare: touch_sensor_disable(); con esp-idf v5.0+ se stai usando driver/touch_sens.h
+        
         ESP_LOGI(TAG, "Touch sensor disabled");
     }
 }
@@ -201,7 +192,9 @@ void config_low_power_consumption(bool high_performance) {
  * woke up it starts the program execution from the very beginning, so it behaves as a reset.
  * The sensor enters its lowest power state and clears its internal "motion detected" bit.
  * GPIO18 is configurd as RTC GPIO, is set as an input, so it can listen for the
- * sensor's signal, and its internal resistors are disabled. The pin is then configured as
+ * sensor's signal, and its internal resistors are disabled - to leave the pin in a
+ * high-impedance state (floating), preventing leakage  currents that could drain
+ * the battery during deep sleep. The pin is then configured as
  * a wake-up source.
  * A 100ms delay is set to ensure all SPI communcations are closed and to alow the
  * electrical signals on the PCB to stabilize, so that there won't be any "spurious" wakeups.
@@ -284,7 +277,10 @@ static void check_inactivity(void) {
 }
 
 void tmx_callback(tmx_gesture_t gesture) {
-    // Handle the gesture event
+    /* Whenever a touch gesture is detected, reset the inactivity timer */
+    last_event_time = esp_timer_get_time() / 1000;
+    
+    /* Handle the gesture event */
     hogp_data_event_t event;
 
     switch(gesture.type){
@@ -312,6 +308,70 @@ void tmx_callback(tmx_gesture_t gesture) {
 
         default:
             break; 
+    }
+}
+
+/**
+ * @brief Sensor task definition
+ * @param
+ * @return
+ * 
+ * @details This function handles interrupts from the sensor internally.
+ * 
+ * @code static void sensor_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Task sensore avviato");
+
+    pmw2289_start_motion_tracking_interrupt(sensor_handle, 3200);
+    vTaskDelete(NULL);
+}
+ * @endcode
+ */
+static void sensor_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Task sensore avviato");
+
+    pmw2289_start_motion_tracking_interrupt(sensor_handle, 3200);
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Motion callback
+ * @param
+ * @return
+ * 
+ * @details This functoin "translates" the sensor' movements into Bluetooth
+ * commands and resets the timer.
+ * 
+ * @code static void my_motion_callback(const pmw3389_motion_data_t *motion, void *used_data) {
+    // 1. Whenever a movement is detected, reset the inactivity timer
+    last_event_time = esp_timer_get_time() / 1000;
+
+    // 2. Prepare the data event data
+    hogp_data_event_t event;
+    event.type = HOGP_DEVT_CURSOR_MOTION;
+    event.x = motion->delta_x;
+    event.y = motion->delta_y;
+
+    // 3. Send data if noise threshold exceeded
+    if (abs(motion->delta_x)) > MOTION_THRESHOLF || abs(motion->delta_y) > MOTION_THRESHOLD) {
+        hogp_send(&event);
+    }
+}
+ * @endcode
+ * 
+ */
+static void my_motion_callback(const pmw3389_motion_data_t *motion, void *used_data) {
+    /* 1. Whenever a movement is detected, reset the inactivity timer */
+    last_event_time = esp_timer_get_time() / 1000;
+
+    /* 2. Prepare the data event data */
+    hogp_data_event_t event;
+    event.type = HOGP_DEVT_CURSOR_MOTION;
+    event.x = motion->delta_x;
+    event.y = motion->delta_y;
+
+    /* 3. Send data if noise threshold exceeded */
+    if (abs(motion->delta_x)) > MOTION_THRESHOLF || abs(motion->delta_y) > MOTION_THRESHOLD) {
+        hogp_send(&event);
     }
 }
 
@@ -360,7 +420,7 @@ void fn_START(void) {
     config_low_power_consumption(high_performance);
 
     esp_err_t ret;
-    // Init the NVS flash (required for bonding)
+    // Init NVS flash (required for bonding)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -370,7 +430,7 @@ void fn_START(void) {
         ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
     }
 
-    // Init the HOGP component
+    // Init HOGP component
     hogp_init_info_t hogp_init_info = {
         .device_data = (hogp_device_data_t) {
             .device_name = "BTFL Mouse",
@@ -386,18 +446,18 @@ void fn_START(void) {
 
     /* Init touch driver and task */
     tmx_init();
-    xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
+    xTaskCreate(tmx_task, "tmx_event_task", 4096, (void *) tmx_callback, 5, NULL);
 
     /* Init optical sensor and task */
-    // Configure sensor pins
+    /* Configure sensor pins */
     pmw3389_config_t config = {
         .spi_host = SPI2_HOST,
         .pin_miso = GPIO_NUM_37,
         .pin_mosi = GPIO_NUM_35,
         .pin_sclk = GPIO_NUM_36,
         .pin_cs = GPIO_NUM_45,
-        .pin_motion = GPIO_NUM_18,        // Optional
-        .pin_reset = GPIO_NUM_21,         // Optional
+        .pin_motion = GPIO_NUM_18,
+        .pin_reset = GPIO_NUM_21,
         .spi_clock_speed_hz = 2000000,    // 2MHz max
     };
 
@@ -407,15 +467,15 @@ void fn_START(void) {
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "PMW3389 init failed: %s", esp_err_to_name(ret));
     }
-    /* Funzione per registrare la callback */
-    ret = pmw3389_register_callback(pmw3389_handle_t handle, 
-                                        pmw3389_motion_callback_t callback, 
-                                        void *user_data);
+
+    /* Function to register the callback */
+    ret = pmw3389_register_callback(sensor_handle, my_motion_callback, NULL);
+
+    /* Create task that will run in the background to listen for movements */
+    xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 10, NULL);
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to register motion callback");
+        ESP_LOGE(TAG, "Failed to register motion callback");
     }
-    pmw3389_start_motion_tracking_interrupt(sensor, 3200);
-    // quindi per questo non serve una xTaskCreate????
     
     last_event_time = esp_timer_get_time()/1000;
 
@@ -423,25 +483,18 @@ void fn_START(void) {
 }
 
 void fn_WORKING(void) {
-    /* altro? non credo. forse serve che il codice 
-    di ilaria e di fede mi modifichi il last event time
-    in caso di movimento da sensore ottico o touch.
-    inoltre sarebbe da controllare non ci siano trasferimenti
-    bluetooth mentre va in low_power_consumption*/
-    while(1) {
-        // Send events to the Bluetooth host
-        hogp_data_event_t event;
-        event.type = HOGP_DEVT_CURSOR_MOTION;
-        event.x = 16;
-        event.y = 16;
+    // Send events to the Bluetooth host
+    hogp_data_event_t event;
+    event.type = HOGP_DEVT_CURSOR_MOTION;
+    event.x = 16;
+    event.y = 16;
 
-        for (int i = 0; i < 64; i++) {
-            hogp_send(&event);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
-
-        check_inactivity();
+    for (int i = 0; i < 64; i++) {
+        hogp_send(&event);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+
+    check_inactivity();
 }
 
 void fn_DEEP_SLEEP(void) {
@@ -466,13 +519,9 @@ void app_main(void) {
     cur_state = START;
     while(1) {
         if(cur_state < NUM_STATES) {
-        (*StateMachine[cur_state].func) ();
+            (*StateMachine[cur_state].func) ();
         } else {
             /* error */
         }
     }
-    
-    /* hogp_setup(&hogp_init_info);
-
-    vTaskDelay(100000 / portTICK_PERIOD_MS); */
 }
