@@ -243,8 +243,8 @@ static void enter_deep_sleep(void) {
  * @return void
  * 
  * @details If the sensor is active, the function calulates the inactive_time.
- * If the time since the last motion detected exceedes 10 seconds, enter Light Sleep mode,
- * if it exceedes 5 minutes, enter Deep Sleep mode.
+ * If the time since the last motion detected exceedes 5 minutes, enter Light Sleep mode,
+ * if it exceedes 10 minutes, enter Deep Sleep mode.
  * 
  * @code
  * static void check_inactivity(void) {
