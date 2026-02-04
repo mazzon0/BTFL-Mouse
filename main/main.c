@@ -37,37 +37,6 @@ static int64_t last_event_time;
 static bool high_performance;
 static pmw3389_handle_t sensor_handle = NULL; // Handle to communicate with the sensor
 
-/**
- * Motion reading
- */
-/**
- * @brief Read motion data from sensor -- da ilaria ma manca pezzo
- * 
- * @details Updates last motion time!!!!
- * 
- * @code
- * static void pmw3389_read_motion(void) {
-    uint8_t motion = pmw3389_read(PMW3389_REG_MOTION);
-   
-    if (motion & 0x80) {  // Bit 7: motion detected
-        // Read 16-bit delta values
-        uint8_t delta_x_l = pmw3389_read(PMW3389_REG_DELTA_X_L);
-        uint8_t delta_x_h = pmw3389_read(PMW3389_REG_DELTA_X_H);
-        uint8_t delta_y_l = pmw3389_read(PMW3389_REG_DELTA_Y_L);
-        uint8_t delta_y_h = pmw3389_read(PMW3389_REG_DELTA_Y_H);
-       
-        int16_t delta_x = (int16_t)((delta_x_h << 8) | delta_x_l);
-        int16_t delta_y = (int16_t)((delta_y_h << 8) | delta_y_l);
-       
-        // Filter small movements (noise)
-        if (abs(delta_x) > MOTION_THRESHOLD || abs(delta_y) > MOTION_THRESHOLD) {
-            last_motion_time = esp_timer_get_time() / 1000;  // Update timestamp
-        }
-    }
-   }
- * @endcode
- */
-
  /**
  * Power mode functions
  */
@@ -360,7 +329,7 @@ static void sensor_task(void *pvParameters) {
  * @endcode
  * 
  */
-static void my_motion_callback(const pmw3389_motion_data_t *motion, void *used_data) {
+static void pmw3389_callback(const pmw3389_motion_data_t *motion, void *used_data) {
     /* 1. Whenever a movement is detected, reset the inactivity timer */
     last_event_time = esp_timer_get_time() / 1000;
 
@@ -470,7 +439,7 @@ void fn_START(void) {
     }
 
     /* Function to register the callback */
-    ret = pmw3389_register_callback(sensor_handle, my_motion_callback, NULL);
+    ret = pmw3389_register_callback(sensor_handle, pmw3389_callback, NULL);
 
     /* Create task that will run in the background to listen for movements */
     xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 10, NULL);
