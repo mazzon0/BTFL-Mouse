@@ -36,10 +36,11 @@ void tmx_callback(tmx_gesture_t gesture){
     }
 }
 
-
+void bt_connection_cb(bool connected);
+void bt_suspension_cb(bool suspended);
 
 void app_main(void) {
-    // Init the NVS flash (required for Bluetooth bonding)
+    // Init the NVS flash (required for bonding)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -55,7 +56,10 @@ void app_main(void) {
             .device_name = "BTFL Mouse",
             .appearance = HOGP_APPEARANCE_MOUSE,
         },
-        .update_period_ms = 10,
+        .connected_cb = bt_connection_cb,
+        .suspended_cb = bt_suspension_cb,
+        .register_period_ms = 10,
+        .transmit_period_ms = 20,
     };
 
     hogp_result_t res = hogp_setup(&hogp_init_info);
@@ -67,8 +71,16 @@ void app_main(void) {
     tmx_init();
     xTaskCreate(tmx_task, "tmx_event_task", 4096,(void *) tmx_callback, 5, NULL);
 
-    
-
     // Shutdown HOGP component
-    //hogp_shutdown();
+    hogp_shutdown();
+}
+
+void bt_connection_cb(bool connected) {
+    if (connected) ESP_LOGI("my_project", "Connected");
+    else ESP_LOGI("my_project", "Disconnected");
+}
+
+void bt_suspension_cb(bool suspended) {
+    if (suspended) ESP_LOGI("my_project", "Suspended");
+    else ESP_LOGI("my_project", "Not suspended");
 }

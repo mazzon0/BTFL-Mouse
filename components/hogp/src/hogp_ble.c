@@ -10,6 +10,7 @@
 // UUIDs from the SIG Assigned Numbers
 #define BLE_UUID_SVC_HID                        0x1812
 #define BLE_UUID_SVC_DEVINFO                    0x180A
+#define BLE_UUID_SVC_BATTERY                    0x180F
 #define BLE_UUID_CHR_HID_INFORMATION            0x2A4A
 #define BLE_UUID_CHR_REPORT_MAP                 0x2A4B
 #define BLE_UUID_CHR_HID_CONTROL_POINT          0x2A4C
@@ -17,10 +18,12 @@
 #define BLE_UUID_CHR_PROTOCOL_MODE              0x2A4E
 #define BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT    0x2A33
 #define BLE_UUID_CHR_PNP_ID                     0x2A50
+#define BLE_UUID_CHR_BATTERY_LEVEL              0x2A19
 #define BLE_UUID_DSC_REPORT_REF                 0x2908
 
 const ble_uuid16_t hid_service_uuid = BLE_UUID16_INIT(BLE_UUID_SVC_HID);
 const ble_uuid16_t device_info_service_uuid = BLE_UUID16_INIT(BLE_UUID_SVC_DEVINFO);
+const ble_uuid16_t battery_service_uuid = BLE_UUID16_INIT(BLE_UUID_SVC_BATTERY);
 const ble_uuid16_t hid_info_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_HID_INFORMATION);
 const ble_uuid16_t report_map_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_REPORT_MAP);
 const ble_uuid16_t hid_control_point_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_HID_CONTROL_POINT);
@@ -28,13 +31,17 @@ const ble_uuid16_t protocol_mode_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_PROTOCOL_MO
 const ble_uuid16_t mouse_report_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_REPORT);
 const ble_uuid16_t mouse_boot_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_BOOT_MOUSE_INPUT_REPORT);
 const ble_uuid16_t pnp_id_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_PNP_ID);
+const ble_uuid16_t battery_level_uuid = BLE_UUID16_INIT(BLE_UUID_CHR_BATTERY_LEVEL);
 const ble_uuid16_t report_ref_mouse_in_uuid = BLE_UUID16_INIT(BLE_UUID_DSC_REPORT_REF);
 
 hogp_handles_t handles;     // handles for the ble definitions
 
 // Protocol definitions
-#define HOGP_USB_VERSION_MAJOR_BCD  0x01
-#define HOGP_USB_VERSION_MINOR_BCD  0x11
+#define HOGP_USB_HID_VERSION_MAJOR_BCD  0x01
+#define HOGP_USB_HID_VERSION_MINOR_BCD  0x11
+
+// Time Conversions
+#define BLE_ITVL_FROM_MS(ms)   (((ms) * 4 + 2) / 5)
 
 // NimBLE Prototypes
 void ble_store_config_init(void);
@@ -47,6 +54,9 @@ static int gap_event_callback(struct ble_gap_event *event, void *arg);
 // Utility functions
 static void set_service_uuids(void);
 
+// Tasks
+static void hogp_update_params_task(void *params);
+
 // Host access callbacks
 static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_control_point_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
@@ -55,6 +65,7 @@ static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, 
 static int hid_report_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_boot_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int pnp_id_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int battery_level_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 static int hid_report_ref_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 // Services definition
@@ -126,14 +137,25 @@ static const struct ble_gatt_svc_def services[] = {
                 .access_cb = pnp_id_access_cb,
                 .flags = BLE_GATT_CHR_F_READ,
             },
-            {
-                0
-            }
+            { 0 }
         }
     },
+    // Battery Service
     {
-        0
-    }
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = (const ble_uuid_t *) &battery_service_uuid,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            // Battery Level
+            {
+                .uuid = (const ble_uuid_t *) &battery_level_uuid,
+                .access_cb = battery_level_access_cb,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+                .val_handle = &handles.battery_level,
+            },
+            { 0 }
+        }
+    },
+    { 0 }
 };
 
 
@@ -192,7 +214,7 @@ hogp_result_t hogp_nimble_config(void) {
     //ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb; // TODO
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
 
-    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO; // or BLE_SM_IO_CAP_DISPLAY_YESNO for more security
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO; // or BLE_SM_IO_CAP_DISPLAY_YESNO
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 1;
     ble_hs_cfg.sm_sc = 1;
@@ -262,20 +284,12 @@ hogp_result_t hogp_connect(uint16_t handle) {
     }
 
     ctx->connection.conn_handle = handle;
-    INFO("Connection handle updated: %d", ctx->connection.conn_handle);
-
-    struct ble_gap_upd_params params = {
-        .itvl_min = desc.conn_itvl,
-        .itvl_max = desc.conn_itvl,
-        .latency = 3,
-        .supervision_timeout = desc.supervision_timeout,
-    };
-
-    rc = ble_gap_update_params(handle, &params);
-    if (rc != 0) {
-        ERROR("Failed to update connection parameters, error code: %d", rc);
-        return HOGP_ERR_INTERNAL_FAIL;
-    }
+    INFO("Connection parameters: itvl (%d), superivsion timeout: (%d)", desc.conn_itvl, desc.supervision_timeout);
+    
+    // Creates task for negotiating the itvl value (if the current value is not accepted)
+    uint16_t target_itvl = BLE_ITVL_FROM_MS(ctx->transmit_period_ms);
+    if (target_itvl - 1 > desc.conn_itvl || desc.conn_itvl < target_itvl + 1)
+        xTaskCreate(hogp_update_params_task, "HOGP ITVL", 4 * 1024, NULL, 3, NULL);
 
     return HOGP_OK;
 }
@@ -297,7 +311,7 @@ hogp_result_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t
         INFO("Notification sent successfully (Type: %d)", chr);
     } else {
         WARN("Notification send failed. Error code: %d, Handle: %d", rc, ctx->connection.conn_handle);
-        //os_mbuf_free_chain(om); // NimBLE frees on error for notify_custom? Check API docs usually
+        //os_mbuf_free_chain(om); // NimBLE frees on error for notify_custom? Check API docs
         return HOGP_ERR_INTERNAL_FAIL;
     }
     return HOGP_OK;
@@ -322,7 +336,37 @@ hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type) {
     if (subscription_type & 2)  ctx->connection.notify_sub.subs[i]   = true;
     else                        ctx->connection.notify_sub.subs[i]   = false;
 
+    INFO("Subscription event handled (handle: %d)", handle);
+
     return HOGP_OK;
+}
+
+static void hogp_update_params_task(void *params) {
+
+    // Waits 1000ms
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    hogp_context_t *ctx = hogp_get_context();
+
+    struct ble_gap_conn_desc desc;
+    if (ble_gap_conn_find(ctx->connection.conn_handle, &desc) != 0) {    // Continue only if still connected
+        vTaskDelete(NULL);
+    }
+
+    // Update itvl value
+    uint16_t new_itvl = BLE_ITVL_FROM_MS(ctx->transmit_period_ms);
+    struct ble_gap_upd_params new_params = {
+        .itvl_min = new_itvl - 1,
+        .itvl_max = new_itvl + 1,
+        .latency  = 0,
+        .supervision_timeout = desc.supervision_timeout,
+    };
+
+    if (ble_gap_update_params(ctx->connection.conn_handle, &new_params) != 0) {
+        ERROR("ITVL update failed");
+    }
+
+    vTaskDelete(NULL);
 }
 
 
@@ -338,6 +382,7 @@ static void set_service_uuids(void) {
 
     ctx->connection.svc_uuids[0] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_HID);
     ctx->connection.svc_uuids[1] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_DEVINFO);
+    ctx->connection.svc_uuids[2] = (ble_uuid16_t) BLE_UUID16_INIT(BLE_UUID_SVC_BATTERY);
 }
 
 /**
@@ -406,8 +451,8 @@ static void ble_stack_sync_callback(void) {
  * @brief  The central GAP event handler.
  * Handles connection, disconnection, advertising completion, and subscription updates.
  * Translates raw BLE events into `hogp_control_event_t` for the FSM queue.
- * @param  event  The event structure provided by NimBLE.
- * @param  arg    User argument (unused).
+ * @param event The event structure provided by NimBLE.
+ * @param arg User argument (unused).
  * @return 0 on success, or a BLE error code.
  */
 static int gap_event_callback(struct ble_gap_event *event, void *arg) {
@@ -538,7 +583,7 @@ static int hid_info_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct
     //    [1]: bcdHID MSB
     //    [2]: bCountryCode (0x00 for not localized)
     //    [3]: Flags (0x02 for Normally Connectable)
-    const uint8_t hid_info[4] = { HOGP_USB_VERSION_MINOR_BCD, HOGP_USB_VERSION_MAJOR_BCD, 0x00, 0x02 };
+    const uint8_t hid_info[4] = { HOGP_USB_HID_VERSION_MINOR_BCD, HOGP_USB_HID_VERSION_MAJOR_BCD, 0x00, 0x02 };
     int rc = os_mbuf_append(ctxt->om, hid_info, sizeof(hid_info));
     if (rc != 0) { WARN("HID Info response appended. Unsuccessfull: %d", rc); }
     return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
@@ -629,36 +674,37 @@ static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, 
     INFO("HID Report Map read request received");
     
     static const uint8_t hid_report_map[] = {
-        0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
-        0x09, 0x02,        // Usage (Mouse)
-        0xA1, 0x01,        // Collection (Application)
-        0x09, 0x01,        //   Usage (Pointer)
-        0xA1, 0x00,        //   Collection (Physical)
+        0x05, 0x01,        // Usage Page: Generic Desktop Ctrls
+        0x09, 0x02,        // Usage: Mouse
+        0xA1, 0x01,        // Collection: Application
+        0x09, 0x01,        //   Usage: Pointer
+        0xA1, 0x00,        //   Collection: Physical
         
+        // TODO set all 8 buttons
         // --- Buttons (3 buttons) ---
-        0x05, 0x09,        //     Usage Page (Button)
-        0x19, 0x01,        //     Usage Minimum (0x01)
-        0x29, 0x03,        //     Usage Maximum (0x03)
-        0x15, 0x00,        //     Logical Minimum (0)
-        0x25, 0x01,        //     Logical Maximum (1)
-        0x95, 0x03,        //     Report Count (3)
-        0x75, 0x01,        //     Report Size (1)
+        0x05, 0x09,        //     Usage Page: Button
+        0x19, 0x01,        //     Usage Minimum: 0x01
+        0x29, 0x03,        //     Usage Maximum: 0x03
+        0x15, 0x00,        //     Logical Minimum: 0
+        0x25, 0x01,        //     Logical Maximum: 1
+        0x95, 0x03,        //     Report Count: 3
+        0x75, 0x01,        //     Report Size: 1
         0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,...)
 
         // --- Padding (5 bits to complete the byte) ---
-        0x95, 0x01,        //     Report Count (1)
-        0x75, 0x05,        //     Report Size (5)
+        0x95, 0x01,        //     Report Count: 1
+        0x75, 0x05,        //     Report Size: 5
         0x81, 0x03,        //     Input (Const,Var,Abs,No Wrap,Linear,...)
 
         // --- X, Y, Wheel (3 bytes) ---
-        0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
-        0x09, 0x30,        //     Usage (X)
-        0x09, 0x31,        //     Usage (Y)
-        0x09, 0x38,        //     Usage (Wheel)
-        0x15, 0x81,        //     Logical Minimum (-127)
-        0x25, 0x7F,        //     Logical Maximum (127)
-        0x75, 0x08,        //     Report Size (8)
-        0x95, 0x03,        //     Report Count (3)
+        0x05, 0x01,        //     Usage Page: Generic Desktop Ctrls
+        0x09, 0x30,        //     Usage: X
+        0x09, 0x31,        //     Usage: Y
+        0x09, 0x38,        //     Usage: Wheel
+        0x15, 0x81,        //     Logical Minimum: -127
+        0x25, 0x7F,        //     Logical Maximum: 127
+        0x75, 0x08,        //     Report Size: 8
+        0x95, 0x03,        //     Report Count: 3
         0x81, 0x06,        //     Input (Data,Var,Rel,No Wrap,Linear,...)
 
         0xC0,              //   End Collection
@@ -716,6 +762,20 @@ static int pnp_id_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct b
     if (rc != 0) { WARN("Mouse Report response appended. Unsuccessfull: %d", rc); }
     return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     return 0;
+}
+
+static int battery_level_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    hogp_context_t *ctx = hogp_get_context();
+
+    INFO("Battery level characteristic read request received");
+    if (ctxt->op != BLE_GATT_ACCESS_OP_READ_CHR) {
+        WARN("Invalid operation %d on Battery level characteristic (Conn: %d)", ctxt->op, conn_handle);
+        return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
+    }
+
+    int rc = os_mbuf_append(ctxt->om, &ctx->hid_state.battery_level, sizeof(uint8_t));
+    if (rc != 0) { WARN("Battery level response appended. Unsuccessfull: %d", rc); }
+    return (rc == 0) ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
 static int hid_report_ref_mouse_access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
