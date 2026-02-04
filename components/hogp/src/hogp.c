@@ -1,49 +1,92 @@
 #include "hogp.h"
-#include "hogp_conn.h"
+#include "hogp_common.h"
+#include "hogp_ble.h"
+#include "hogp_context.h"
+#include "hogp_fsm.h"
+#include "hogp_control_events.h"
 
+// NimBLE task
 static void nimble_run_task(void *param);
 
-esp_err_t hogp_setup(hogp_init_info_t *init_info) {
+hogp_result_t hogp_setup(const hogp_init_info_t *const init_info) {
     esp_err_t ret = ESP_OK;
-    int rc = 0;
+    hogp_result_t rc = HOGP_OK;
 
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    if (ret != ESP_OK) {
-        ESP_LOGE(HID_TAG, "failed to initialize nvs flash, error code: %d ", ret);
-        return ret;
-    }
-
+    // Init ble stack (NimBLE)
     ret = nimble_port_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(HID_TAG, "failed to initialize nimble stack, error code: %d", ret);
-        return ret;
+        ERROR("Failed to initialize nimble stack, error code: %d", ret);
+        return HOGP_ERR_INTERNAL_FAIL;
     }
 
-    rc = hogp_conn_setup(init_info);
-    if (rc != 0) return ESP_FAIL;
+    // Initialize HOGP context based on the init_info
+    rc = hogp_context_init(init_info);
+    if (rc != HOGP_OK) return rc;
 
-    // schedule nimble run task
-    xTaskCreate(nimble_run_task, "NimBLE Run", 4 * 1024, NULL, 5, NULL);
+    // Initialize BLE GAP (Generic Access Profile)
+    rc = hogp_gap_init();
+    if (rc != HOGP_OK) return rc;
 
-    // schedule hogp run task
-    xTaskCreate(hogp_conn_task, "HOGP Connection Manager", 4 * 1024, NULL, 5, NULL);
+    // Initialize BLE GATT (Generic Attribute Profile)
+    rc = hogp_gatt_init();
+    if (rc != HOGP_OK) return rc;
 
-    return ESP_OK;
+    // Config NimBLE (callbacks, security, conding with devices)
+    hogp_nimble_config();
+
+    // Schedule NimBLE task
+    xTaskCreate(nimble_run_task, "NimBLE Stack", 4 * 1024, NULL, 5, NULL);
+
+    // Schedule HOGP task
+    xTaskCreate(hogp_task, "HOGP FSM", 4 * 1024, NULL, 5, NULL);
+
+    return HOGP_OK;
 }
 
-esp_err_t hogp_shutdown(void) {
-    int rc = hogp_conn_shutdown();
-    if (rc != 0) return ESP_FAIL;
+hogp_result_t hogp_shutdown(void) {
+    // TODO handle the case if the task do not delete itself
+    hogp_context_t *ctx = hogp_get_context();
 
-    return ESP_OK;
+    hogp_control_event_t event;
+    event.type = HOGP_CEVT_SHUTDOWN;
+
+    if (xQueueSendToBackFromISR(ctx->control_queue, &event, 0) != pdPASS) {
+        ERROR("Failed to enqueue shutdown event");
+        return HOGP_ERR_QUEUE_FULL;
+    }
+
+    while (hogp_is_running()) { // TODO return error after too many iterations
+        // Sleep for 10ms then check again
+        vTaskDelay(pdMS_TO_TICKS(10)); 
+    }
+
+    hogp_context_shutdown();
+    return HOGP_OK;
 }
 
+hogp_result_t hogp_send(const hogp_data_event_t *event) {
+    if (!hogp_is_running()) {
+        ERROR("The HOGP FSM task is not running, unable to send the message");
+        return HOGP_ERR_INTERNAL_FAIL;
+    }
+
+    hogp_context_t *ctx = hogp_get_context();
+
+    if (xQueueSendToBackFromISR(ctx->data_queue, event, 0) != pdPASS) {
+        ERROR("Push to data queue failed");
+        return HOGP_ERR_QUEUE_FULL;
+    }
+    return HOGP_OK;
+}
+
+/**
+ * @brief FreeRTOS task entry point for the NimBLE stack.
+ * Calls `nimble_port_run()` which blocks indefinitely, processing BLE events.
+ * This task is created in `hogp_setup()`.
+ * @param param Unused task parameter.
+ */
 static void nimble_run_task(void *param) {
-    ESP_LOGI(HID_TAG, "nimble run task has been started");
+    INFO("Nimble run task has been started");
     nimble_port_run();
     vTaskDelete(NULL);
 }

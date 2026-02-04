@@ -1,3 +1,2 @@
 idf_component_register(SRCS "main.c"
-                       REQUIRES hogp
-                       REQUIRES power_supply)
+                       REQUIRES nvs_flash hogp tmx pmw3389dm power_supply)
