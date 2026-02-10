@@ -4,16 +4,11 @@
 #include "freertos/FreeRTOS.h"
 #include "tmx.h"
 #include "pmw3389.h"
-
 #include "esp_sleep.h"
 #include "driver/rtc_io.h"
 #include "esp_timer.h"
 
-//le prossime servono??
 #include "esp_pm.h"
-//#include "esp_bt.h"
-//#include "esp_bt_main.h"
-//#include "driver/touch_pad.h"
 
 //Pin configuration
 /**
@@ -363,6 +358,7 @@ void fn_OFF(void) {
 }
 
 void app_main(void) {
+    vTaskDelay(pdMS_TO_TICKS(500));
     cur_state = START;
     while(1) {
         if(cur_state < NUM_STATES) {

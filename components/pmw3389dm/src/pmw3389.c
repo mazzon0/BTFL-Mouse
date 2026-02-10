@@ -43,6 +43,20 @@ struct pmw3389_dev_t {
 };
 
 /**
+ * @brief Circular buffer (per filtro media mobile)
+ */
+#define FILTER_BUFFER_SIZE 4  // Campioni da mediare (4)
+
+typedef struct {
+    int16_t buffer_x[FILTER_BUFFER_SIZE];
+    int16_t buffer_y[FILTER_BUFFER_SIZE];
+    uint8_t index;
+    bool initialized;
+} motion_filter_t;
+
+static motion_filter_t g_motion_filter = {0};
+
+/**
  * @brief Delay microseconds
  */
 static inline void delay_us(uint32_t us) {
@@ -55,6 +69,47 @@ static inline void delay_us(uint32_t us) {
 static inline void delay_ms(uint32_t ms) {
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
+
+/**
+ * @brief Applica filtro media mobile con circular buffer
+ */
+static void apply_moving_average_filter(int8_t raw_x, int8_t raw_y, 
+                                        int16_t *out_x, int16_t *out_y) {
+    // Salva nuovo campione nel buffer circolare
+    g_motion_filter.buffer_x[g_motion_filter.index] = raw_x;
+    g_motion_filter.buffer_y[g_motion_filter.index] = raw_y;
+    
+    // Incrementa indice (con wrap-around)
+    g_motion_filter.index = (g_motion_filter.index + 1) % FILTER_BUFFER_SIZE;
+    
+    // Calcola media solo se buffer è inizializzato
+    if (!g_motion_filter.initialized) {
+        // Prime N letture: riempi il buffer
+        *out_x = raw_x;
+        *out_y = raw_y;
+        
+        // Segna come inizializzato dopo N campioni
+        static uint8_t init_count = 0;
+        if (++init_count >= FILTER_BUFFER_SIZE) {
+            g_motion_filter.initialized = true;
+        }
+        return;
+    }
+    
+    // Calcola media degli ultimi N campioni
+    int32_t sum_x = 0;
+    int32_t sum_y = 0;
+    
+    for (int i = 0; i < FILTER_BUFFER_SIZE; i++) {
+        sum_x += g_motion_filter.buffer_x[i];
+        sum_y += g_motion_filter.buffer_y[i];
+    }
+    
+    *out_x = (int16_t)(sum_x / FILTER_BUFFER_SIZE);
+    *out_y = (int16_t)(sum_y / FILTER_BUFFER_SIZE);
+}
+
+
 
 /**
  * @brief CS Low - Start communication (Arduino style)
@@ -221,7 +276,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
             .mode = GPIO_MODE_INPUT,
             .pull_up_en = GPIO_PULLUP_DISABLE,
             .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_ANYEDGE, 
+            .intr_type = GPIO_INTR_NEGEDGE, // ANYEDGE
         };
 
         gpio_config(&io_conf);
@@ -403,12 +458,12 @@ static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle) {
     
     cs_low(handle);
     spi_transfer(handle, PMW3389_REG_SROM_LOAD_BURST | 0x80);
-    delay_us(15);
+    //delay_us(15);
     
     // Upload all firmware bytes
     for (int i = 0; i < PMW3389_SROM_LENGTH; i++) {
         spi_transfer(handle, pmw3389_srom_data[i]);
-        delay_us(20); //15
+        //delay_us(20); //15
         
         // Progress indicator
         if ((i % 512) == 0 && i > 0) {
@@ -418,8 +473,8 @@ static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle) {
     }
     
     cs_high(handle);
-    delay_us(500); //200
-    delay_ms(50); //
+    //delay_us(500); //200
+    delay_ms(100);
     
     // Step 4: Verify SROM ID
     uint8_t srom_id;
@@ -450,7 +505,8 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
     ESP_LOGI(TAG, "Configuring sensor (native mode)...");
     
     // Upload SROM firmware
-    ret = pmw3389_upload_srom(handle);
+    //ret = pmw3389_upload_srom(handle);
+    ret = ESP_OK;
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SROM upload failed");
         return ret;
@@ -462,13 +518,13 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
     pmw3389_write_reg(handle, PMW3389_REG_CONFIG2, 0x00);
     
     // Set run downshift time
-    pmw3389_write_reg(handle, PMW3389_REG_RUN_DOWNSHIFT, 0x0A);
+    pmw3389_write_reg(handle, PMW3389_REG_RUN_DOWNSHIFT, 0x0A); //0x0F
 
      
     pmw3389_write_reg(handle, PMW3389_REG_CONFIG1, 0x3F);  // 3200 CPI
     
     // Set rest mode rates
-    pmw3389_write_reg(handle, PMW3389_REG_REST1_RATE_LOWER, 0x0A);
+    pmw3389_write_reg(handle, PMW3389_REG_REST1_RATE_LOWER, 0x0A); 
     pmw3389_write_reg(handle, PMW3389_REG_REST1_RATE_UPPER, 0x00);
     pmw3389_write_reg(handle, PMW3389_REG_REST1_DOWNSHIFT, 0x00);
     
@@ -480,13 +536,13 @@ esp_err_t pmw3389_upload(pmw3389_handle_t handle) {
     pmw3389_write_reg(handle, PMW3389_REG_REST3_RATE_UPPER, 0x00);
     
     // Disable angle snap
-    pmw3389_write_reg(handle, PMW3389_REG_ANGLE_SNAP, 0x00);
+    pmw3389_write_reg(handle, PMW3389_REG_ANGLE_SNAP, 0x00); 
     
     // Set lift detection threshold
-    pmw3389_write_reg(handle, PMW3389_REG_LIFT_CONFIG, 0x02);
+    pmw3389_write_reg(handle, PMW3389_REG_LIFT_CONFIG, 0x02); //0x03
     
     // Set surface quality minimum
-    pmw3389_write_reg(handle, PMW3389_REG_MIN_SQ_RUN, 0x00);
+    pmw3389_write_reg(handle, PMW3389_REG_MIN_SQ_RUN, 0x00); //0x05
     
     // Clear motion registers
     uint8_t dummy;
@@ -511,7 +567,7 @@ esp_err_t pmw3389_read_motion(pmw3389_handle_t handle, pmw3389_motion_data_t *mo
     ret = pmw3389_write_reg(handle, PMW3389_REG_MOTION, 0x01);
     if (ret != ESP_OK) return ret;
     
-    delay_us(75);
+    //delay_us(150);
     
     // Leggi Motion register
     uint8_t motion_reg = 0;
@@ -527,6 +583,8 @@ esp_err_t pmw3389_read_motion(pmw3389_handle_t handle, pmw3389_motion_data_t *mo
     
     ret = pmw3389_read_reg(handle, PMW3389_REG_DELTA_X_L, &delta_x_l);
     if (ret != ESP_OK) return ret;
+
+    delay_us(20);
     
     ret = pmw3389_read_reg(handle, PMW3389_REG_DELTA_Y_L, &delta_y_l);
     if (ret != ESP_OK) return ret;
@@ -535,8 +593,25 @@ esp_err_t pmw3389_read_motion(pmw3389_handle_t handle, pmw3389_motion_data_t *mo
     if (ret != ESP_OK) return ret;
     
     // Conversione two's complement (8-bit)
-    motion_data->delta_x = (int8_t)delta_x_l;
-    motion_data->delta_y = (int8_t)delta_y_l;
+    int8_t raw_x = (int8_t)delta_x_l;
+    int8_t raw_y = (int8_t)delta_y_l;
+
+    int16_t filtered_x, filtered_y;
+    apply_moving_average_filter(raw_x,raw_y, &filtered_x, &filtered_y);
+
+    motion_data->delta_x = (int16_t)filtered_x;
+    motion_data->delta_y = (int16_t)filtered_y;
+    
+    /*  
+        int8_t raw_x = (int8_t)delta_x_l;
+        int8_t raw_y = (int8_t)delta_y_l;
+
+        // Filtro dead zone: ignora movimenti < 2 counts
+        if (abs(raw_x) < 2) raw_x = 0;
+        if (abs(raw_y) < 2) raw_y = 0;
+
+        motion_data->delta_x = raw_x;
+        motion_data->delta_y = raw_y;*/
     
     return ESP_OK;
 }
@@ -705,8 +780,8 @@ esp_err_t pmw3389_test_motion(const pmw3389_config_t *config, uint16_t cpi){
 
         if (motion.motion_detected || motion.delta_x != 0 || motion.delta_y != 0) {
             motion_count++;
-            total_x += motion.delta_x;
-            total_y += motion.delta_y;
+            total_x += motion.delta_x / 100; //SENSITIVITY
+            total_y += motion.delta_y / 100;
 
             ESP_LOGI(TAG, "ΔX: %6d | ΔY: %6d | SQUAL: %3d | Motion: %s%s",
                      motion.delta_x,
@@ -808,7 +883,6 @@ void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t c
     TickType_t start_time = xTaskGetTickCount();
     
     while (1) {
-        printf("SONO NEL MAXILOOP\n");
         // Wait for interrupt notification (timeout 5 seconds)
         uint32_t notification_value = ulTaskNotifyTake(
             pdTRUE,                  // Clear on exit
@@ -816,7 +890,6 @@ void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t c
         );
         
         if (notification_value > 0) {
-            printf("SONO NEL IF 1\n");
             // Motion interrupt received!
             interrupt_count++;
             last_motion_time = xTaskGetTickCount();
@@ -1026,4 +1099,3 @@ void pmw3389_test_motion_interrupt(const pmw3389_config_t *config, uint16_t cpi)
     g_motion_task_handle = NULL;
     pmw3389_deinit(sensor);
 }
-
