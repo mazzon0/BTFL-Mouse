@@ -4,7 +4,7 @@ An easy-to-use ESP-IDF component for implementing Bluetooth Low Energy (BLE) HID
 ## Features
 - Simplified Initialization: Set up a fully functional BLE HID device with a single configuration struct.
 - Thread-Safe API: `hogp_send()` can be called from any task or ISR.
-- Power efficient: only sends updates if there are changes and the host is listening, compacts multiple messages together to save transmission energy.
+- Power efficient: only sends updates if there are changes and the host is listening, composes multiple messages together to save transmission energy.
 - Mouse Input: Supports cursor movement, vertical and horizontal scrolling, and up to 8 mouse buttons.
 - Battery Level: Support sending the battery level to the host.
 

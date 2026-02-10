@@ -212,19 +212,14 @@ void tmx_callback(tmx_gesture_t gesture) {
  * commands and resets the timer.
  */
 static void pmw3389_callback(const pmw3389_motion_data_t *motion, void *used_data) {
-    /* 1. Whenever a movement is detected, reset the inactivity timer */
     last_event_time = esp_timer_get_time() / 1000;
 
-    /* 2. Prepare the data event data */
     hogp_data_event_t event;
     event.type = HOGP_DEVT_CURSOR_MOTION;
     event.x = motion->delta_x;
     event.y = motion->delta_y;
 
-    /* 3. Send data if noise threshold exceeded */
-    if (abs(motion->delta_x) > MOTION_THRESHOLD || abs(motion->delta_y) > MOTION_THRESHOLD) {
-        hogp_send(&event);
-    }
+    hogp_send(&event);
 }
 
 /**
