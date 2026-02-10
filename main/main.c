@@ -358,7 +358,6 @@ void fn_OFF(void) {
 }
 
 void app_main(void) {
-    vTaskDelay(pdMS_TO_TICKS(500));
     cur_state = START;
     while(1) {
         if(cur_state < NUM_STATES) {

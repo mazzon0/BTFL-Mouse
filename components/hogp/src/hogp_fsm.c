@@ -4,13 +4,42 @@
 #include "hogp_control_events.h"
 #include "hogp_ble.h"
 
+const uint8_t MAX_MESSAGES = 4;
+const uint8_t MAX_MSG_LENGTH = 4;
+
+/**
+ * @brief Types of implemented messages
+ */
+typedef enum {
+    MSG_TYPE_MOUSE,
+    MSG_TYPE_BATTERY,
+} hogp_message_type_t;
+
+/**
+ * @brief Data for all implemented messages
+ */
+typedef struct {
+    hogp_message_type_t type;
+
+    union {
+        struct {
+            uint8_t buttons;
+            uint8_t changed_buttons;
+            uint8_t dx;
+            uint8_t dy;
+            uint8_t scroll;
+        } mouse_data;
+
+        struct {
+            uint8_t level;
+        } battery_data;
+    };
+} hogp_message_t;
+
+
 // Utility functions
 static hogp_result_t state_transition(hogp_context_t *ctx);
-static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_data_event_t *event, hogp_protocol_t protocol);
-static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event);
-static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event);
-static hogp_result_t write_battery_level(uint8_t *message, uint8_t *size, hogp_data_event_t *event);
-static hogp_characteristics_t get_characteristic(hogp_data_event_t* event, hogp_protocol_t protocol);
+static hogp_result_t write_messages(uint8_t messages[MAX_MESSAGES][MAX_MSG_LENGTH], uint8_t *sizes, hogp_characteristics_t *characteristics, uint8_t *num_messages);
 
 // Task
 
@@ -20,6 +49,10 @@ void hogp_task(void *params) {
     bool running = true;
     hogp_context_t *ctx = hogp_get_context();
     task = xTaskGetCurrentTaskHandle();
+
+    // Timer data
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(ctx->register_period_ms);
 
     INFO("HOGP task started");
 
@@ -52,35 +85,22 @@ void hogp_task(void *params) {
 
             case HOGP_STATE_CONNECTED:
                 //INFO("STATE CONNECTED");
-                uint8_t message[32];
-                uint8_t size;
-                hogp_data_event_t e;
+                {
+                    uint8_t messages[MAX_MESSAGES][MAX_MSG_LENGTH];
+                    uint8_t sizes[MAX_MESSAGES];
+                    hogp_characteristics_t chrs[MAX_MESSAGES];
 
-                // Get event to send
-                if (!ctx->connection.tx_arrived) {
-                    break;  // Waiting for TX
-                }
-                if (xQueueReceive(ctx->data_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
-                    break;  // No event to send
-                }
+                    if (!ctx->connection.tx_arrived) {
+                        break;  // Waiting for TX
+                    }
 
-                // Write message and update state
-                hogp_protocol_t protocol = ctx->connection.protocol;
-                hogp_characteristics_t chr = get_characteristic(&e, protocol);
-                hogp_result_t ret = write_message(message, &size, &e, protocol);
+                    uint8_t num_messages;
+                    write_messages(messages, sizes, chrs, &num_messages);
 
-                // Send message
-                if (ret == HOGP_OK) {
-                    INFO("Sending notification: %d bytes to %d (chr: %d)", size, ctx->connection.conn_handle, chr);
-                    hogp_result_t res = hogp_notify(message, size, chr);
-
-                    if (res == HOGP_OK) ctx->connection.tx_arrived = false;
-                }
-                else if (ret == HOGP_ERR_QUEUE_EMPTY || ret == HOGP_ERR_TX_BUSY || ret == HOGP_ERR_NOT_SUPPORTED || ret == HOGP_ERR_NOT_SUBSCRIBED) { 
-                    /* normal condition */
-                }
-                else { 
-                    WARN("write_message returned the unexpected value %d", ret); 
+                    for (uint8_t i = 0; i < num_messages; i++) {
+                        hogp_result_t res = hogp_notify(messages[i], sizes[i], chrs[i]);
+                        if (res == HOGP_OK) ctx->connection.tx_arrived = false;
+                    }
                 }
                 break;
             
@@ -93,7 +113,7 @@ void hogp_task(void *params) {
                 //WARN("Unhandled state %d", ctx->state);
         }
 
-        vTaskDelay(ctx->register_period_ms / portTICK_PERIOD_MS);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 
     INFO("HOGP task exiting");
@@ -226,135 +246,133 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
     return HOGP_OK;
 }
 
-static hogp_characteristics_t get_characteristic(hogp_data_event_t* event, hogp_protocol_t protocol) {
-    if (event->type == HOGP_DEVT_CURSOR_MOTION || event->type == HOGP_DEVT_SCROLL_MOTION || event->type == HOGP_DEVT_MOUSE_BUTTON_PRESSED || event->type == HOGP_DEVT_MOUSE_BUTTON_RELEASED) {
-        return (protocol == HOGP_PROTOCOL_REPORT) ? MOUSE_REPORT : MOUSE_BOOT;
-    }
-    else if (event->type == HOGP_DEVT_BATTERY_LEVEL_UPDATE) {
-        return BATTERY_LEVEL;
-    }
-    return UNKNOWN_CHR;
-}
-
 /**
- * @brief Prepares a HID report message based on the active protocol.
- * Checks if the transport is ready (Flow control: `tx_arrived`).
- * Reads user inputs (mouse/keyboard events) from the `data_queue`.
- * Dispatches the event to the correct formatter (Report Mode vs Boot Mode).
- * Updates the hogp_hid_state_t of the context.
- * @param message Buffer to store the formatted report data.
- * @param size Pointer to store the size of the generated report.
- * @param protocol The current active protocol (Report or Boot).
- * @return HOGP_OK on success.
- * @return HOGP_ERR_TX_BUSY if the BLE stack hasn't acknowledged the previous transmission.
- * @return HOGP_ERR_QUEUE_EMPTY if there is no data to send.
- * @return HOGP_ERR_NOT_SUPPORTED if the event type isn't handled.
+ * @brief Tries to add an hogp_data_event_t to a hogp_message_t
+ * @param message
+ * @param event
+ * @return HOGP_OK if successfull, HOGP_ERR_INVALID_ARG if some logic constraint doesn't allow the operation
  */
-static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_data_event_t *event, hogp_protocol_t protocol) {
-    hogp_context_t *ctx = hogp_get_context();
+static hogp_result_t add_event_to_message(hogp_message_t *message, hogp_data_event_t *event) {
+    hogp_message_type_t msg_type = (event->type == HOGP_DEVT_BATTERY_LEVEL_UPDATE) ? MSG_TYPE_BATTERY : MSG_TYPE_MOUSE;
 
-    INFO("Data event received: %d", event->type);
-
-    // Mouse message
-    if (event->type == HOGP_DEVT_CURSOR_MOTION ||
-        event->type == HOGP_DEVT_SCROLL_MOTION ||
-        event->type == HOGP_DEVT_MOUSE_BUTTON_PRESSED ||
-        event->type == HOGP_DEVT_MOUSE_BUTTON_RELEASED)
-    {
-        if (protocol == HOGP_PROTOCOL_REPORT) {
-            return write_mouse_report(message, size, event);
-        }
-        else if (protocol == HOGP_PROTOCOL_BOOT) {
-            return write_mouse_boot(message, size, event);
-        }
-    }
+    if (message->type != msg_type) return HOGP_ERR_INVALID_ARG;
 
     // Battery message
-    else if(event->type == HOGP_DEVT_BATTERY_LEVEL_UPDATE) {
-        return write_battery_level(message, size, event);
+    if (message->type == MSG_TYPE_BATTERY) {
+        // Add to message
+        message->battery_data.level = event->battery_level;
+        return HOGP_OK;
     }
 
-    WARN("Unsupported data event type: %d", event->type);
-    return HOGP_ERR_NOT_SUPPORTED;
-}
+    // Mouse message
+    if (message->type == MSG_TYPE_MOUSE) {
+        switch (event->type) {
+            case HOGP_DEVT_MOUSE_BUTTON_PRESSED:
+                if (event->button & message->mouse_data.changed_buttons) return HOGP_ERR_INVALID_ARG;
+                message->mouse_data.buttons |= event->button;
+                break;
 
-/**
- * @brief Formats a data event into a standard Mouse HID Report.
- * Uses the Report Map defined in `hogp_ble.c`.
- * Mapping: [Buttons, X, Y, Wheel].
- * Checks if the host has subscribed to notifications before formatting.
- * @param message Buffer to write the 4-byte report into.
- * @param size Pointer to write the size (4 bytes).
- * @param event The data event (button press, motion, etc.) to convert.
- * @return HOGP_OK on success.
- * @return HOGP_ERR_NOT_SUBSCRIBED if the host hasn't enabled notifications.
- */
-static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
-    hogp_context_t *ctx = hogp_get_context();
+            case HOGP_DEVT_MOUSE_BUTTON_RELEASED:
+                if (event->button & message->mouse_data.changed_buttons) return HOGP_ERR_INVALID_ARG;
+                message->mouse_data.buttons &= ~event->button;
+                break;
 
-    if (event->type == HOGP_DEVT_CURSOR_MOTION || event->type == HOGP_DEVT_SCROLL_MOTION || event->type == HOGP_DEVT_MOUSE_BUTTON_PRESSED || event->type == HOGP_DEVT_MOUSE_BUTTON_RELEASED) {
-        if (!ctx->connection.notify_sub.mouse_report) return HOGP_ERR_NOT_SUBSCRIBED;   // if not subscribed, no need to send anything
-        *size = 4;
+            case HOGP_DEVT_CURSOR_MOTION:
+                message->mouse_data.dx += event->x;
+                message->mouse_data.dy += event->y;
+                break;
+
+            case HOGP_DEVT_SCROLL_MOTION:
+                message->mouse_data.scroll += event->y;
+                break;
+
+            default:
+        }
+        return HOGP_OK;
     }
 
-    switch (event->type) {
-        case HOGP_DEVT_CURSOR_MOTION:
-            message[0] = 0x00;
-            message[1] = event->x;
-            message[2] = event->y;
-            message[3] = 0;
-            break;
-
-        case HOGP_DEVT_SCROLL_MOTION:
-            message[0] = 0x00;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = event->y;
-            break;
-
-        case HOGP_DEVT_MOUSE_BUTTON_PRESSED:
-            ctx->hid_state.buttons |= (1 << event->button);
-
-            message[0] = ctx->hid_state.buttons;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = 0;
-            break;
-
-        case HOGP_DEVT_MOUSE_BUTTON_RELEASED:
-            ctx->hid_state.buttons &= ~(1 << event->button);
-
-            message[0] = ctx->hid_state.buttons;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = 0;
-            break;
-
-        default:
-            return HOGP_ERR_INVALID_ARG;
-    }
-
+    // This point should never be reached, but in case the unknown event is ignored
     return HOGP_OK;
 }
 
 /**
- * @brief Formats a data event into a Mouse Boot Protocol Report.
- * @note This is currently not implemented (Stub).
- * @return HOGP_ERR_NOT_SUPPORTED always.
+ * @brief Translate the hogp_message_t to a binary message
+ * @param message The message to translate
+ * @param bin_msg The binary message (output argument)
+ * @param size The size of the binary message (output argument)
+ * @param chr The characteristic of the binary message (output argument)
+ * @param protocol For mouse messages, specifies report or boot protocol
  */
-static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
-    return HOGP_ERR_NOT_SUPPORTED;
+void message_to_binary(hogp_message_t *message, uint8_t *bin_msg, uint8_t *size, hogp_characteristics_t *chr, hogp_protocol_t protocol) {
+    switch (message->type) {
+        case MSG_TYPE_BATTERY:
+            bin_msg[0] = message->battery_data.level;
+            *size = 1;
+            *chr = BATTERY_LEVEL;
+            break;
+
+        case MSG_TYPE_MOUSE:
+            if (protocol == HOGP_PROTOCOL_REPORT) {
+                bin_msg[0] = message->mouse_data.buttons;
+                bin_msg[1] = message->mouse_data.dx;
+                bin_msg[2] = message->mouse_data.dy;
+                bin_msg[3] = message->mouse_data.scroll;
+                *size = 4;
+                *chr = MOUSE_REPORT;
+            }
+            else if (protocol == HOGP_PROTOCOL_BOOT) {
+                // TODO
+                *chr = MOUSE_BOOT;
+            }
+            break;
+    }
 }
 
-static hogp_result_t write_battery_level(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
+/**
+ * @brief Writes a list or messages reading elements from the queue
+ * Produces at most MAX_MESSAGES messages.
+ * @param messages Array of messages (output argument)
+ * @param sizes Array of message sizes (output argument)
+ * @param characteristics Array of message characteristics (output argument)
+ * @param num_messages Number of messages (output argument).
+ * @return HOGP_OK is successfull, HOGP_ERR_QUEUE_EMPTY if there are no events to send
+ */
+static hogp_result_t write_messages(uint8_t messages[MAX_MESSAGES][MAX_MSG_LENGTH], uint8_t *sizes, hogp_characteristics_t *characteristics, uint8_t *num_messages) {
     hogp_context_t *ctx = hogp_get_context();
+    hogp_message_t msg = {0};
+    *num_messages = 0;
 
-    if (!ctx->connection.notify_sub.battery_level) return HOGP_ERR_NOT_SUBSCRIBED;   // if not subscribed, no need to send anything
+    // Get first data event
+    hogp_data_event_t e;
+    if (xQueueReceive(ctx->data_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
+        return HOGP_ERR_QUEUE_EMPTY;
+    }
 
-    *size = sizeof(uint8_t);
-    message[0] = event->battery_level;
-    
-    ctx->hid_state.battery_level = event->battery_level;
+    msg.type = (e.type == HOGP_DEVT_BATTERY_LEVEL_UPDATE) ? MSG_TYPE_BATTERY : MSG_TYPE_MOUSE;
+    add_event_to_message(&msg, &e);
+
+    // Receive all other data events
+    while (xQueueReceive(ctx->data_queue, &e, 1 / portTICK_PERIOD_MS) == pdPASS) {
+        if (add_event_to_message(&msg, &e) != HOGP_OK) {
+            message_to_binary(&msg, messages[*num_messages], &sizes[*num_messages], &characteristics[*num_messages], ctx->connection.protocol);
+            (*num_messages)++;
+
+            // Add event to new message
+            msg = (hogp_message_t) {0};
+            msg.type = (e.type == HOGP_DEVT_BATTERY_LEVEL_UPDATE) ? MSG_TYPE_BATTERY : MSG_TYPE_MOUSE;
+            add_event_to_message(&msg, &e);
+
+            // If we are close to the maximum number of messages, save last message and exit
+            if (*num_messages == MAX_MESSAGES - 1) {
+                message_to_binary(&msg, messages[*num_messages], &sizes[*num_messages], &characteristics[*num_messages], ctx->connection.protocol);
+                (*num_messages)++;
+                return HOGP_OK;
+            }
+        }
+    }
+
+    message_to_binary(&msg, messages[*num_messages], &sizes[*num_messages], &characteristics[*num_messages], ctx->connection.protocol);
+    (*num_messages)++;
 
     return HOGP_OK;
 }
