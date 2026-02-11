@@ -3,7 +3,9 @@
 
 #include "tmx_driver.h"
 #include "tmx_common.h"
-#include "tmx_utils.h"
+#include "esp_timer.h"
+
+
 
 #define MAX_NUM_TOUCHES 2
 #define MAX_NUM_FRAMES 20
@@ -109,6 +111,13 @@ void tmx_processing_tracker_FSM();
  * @brief Detect gestures based on the current state of touch trackers.
  */
 tmx_gesture_t tmx_processing_detect_gestures(void);
+
+/**
+ * @brief Get the current time in milliseconds.
+ */
+uint64_t get_current_time_ms(void);
+
+
 
 
 #endif // TMX_PROCESSING_H

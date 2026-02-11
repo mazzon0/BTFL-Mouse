@@ -11,6 +11,12 @@ static tmx_tracker_t s_touch_trackers[MAX_NUM_TOUCHES]; //global blob trackers a
 static int s_next_tracker_id = 1;
 static gesture_state_t s_gesture_state = IDLE;
 
+
+uint64_t get_current_time_ms(void) {
+    uint64_t ms = esp_timer_get_time() / 1000ULL;
+    return ms;
+}
+
 void tmx_processing_raw_read(void)
 {
     //Read raw data from TMX driver
@@ -20,7 +26,6 @@ void tmx_processing_raw_read(void)
 esp_err_t tmx_processing_init(void)
 {
     //Initialize circular buffer for frame history
-    static tmx_touch_t frame_history_buffer[MAX_NUM_FRAMES * MAX_NUM_TOUCHES];
     tmx_driver_init();
     vTaskDelay(100 / portTICK_PERIOD_MS); //Wait for touchpad to stabilize
     tmx_processing_raw_read();
