@@ -6,7 +6,7 @@ static uint32_t s_adaptive_baseline[TMX_M][TMX_N]; //low variation for adaptive 
 static uint32_t s_delta_signal[TMX_M][TMX_N]; //delta signal = filtered - baseline
 static uint32_t s_oversampled_delta[OVERSAMPLED_M][OVERSAMPLED_N]; //oversampled delta signal for blob detection
 static bool visited[OVERSAMPLED_M][OVERSAMPLED_N]; //visited map for flood-fill algorithm
-static tmx_touch_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
+static tmx_blob_t s_current_frame[MAX_NUM_TOUCHES]; //curfrent detected blobs
 static tmx_tracker_t s_touch_trackers[MAX_NUM_TOUCHES]; //global blob trackers among frames
 static int s_next_tracker_id = 1;
 static gesture_state_t s_gesture_state = IDLE;
@@ -40,12 +40,10 @@ void tmx_processing_filtering(void){
     for(int i = 0; i < TMX_M; i++){
         for(int j = 0; j < TMX_N; j++){
             //First stage: Fast EMWA filtering
-            const float alpha_fast = 0.5f;
-            s_filtered_data[i][j] = (uint32_t)(alpha_fast * s_raw_data[i][j] + (1 - alpha_fast) * s_filtered_data[i][j]);
+            s_filtered_data[i][j] = (uint32_t)(ALPHA_FAST * s_raw_data[i][j] + (1 - ALPHA_FAST) * s_filtered_data[i][j]);
 
             //Second stage: Adaptive baseline with slower EMWA
-            const float alpha_slow = 0.005f;
-            s_adaptive_baseline[i][j] = (uint32_t)(alpha_slow * s_filtered_data[i][j] + (1 - alpha_slow) * s_adaptive_baseline[i][j]);
+            s_adaptive_baseline[i][j] = (uint32_t)(ALPHA_SLOW * s_filtered_data[i][j] + (1 - ALPHA_SLOW) * s_adaptive_baseline[i][j]);
 
             //Compute delta signal
             if(s_filtered_data[i][j] > s_adaptive_baseline[i][j]){
@@ -172,7 +170,7 @@ void tmx_processing_blob_detection(void){
     }
 }
 
-void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch){
+void tmx_processing_flood_fill(int r, int c, tmx_blob_t* blob){
     if(r < 0 || r >= OVERSAMPLED_M || c < 0 || c >= OVERSAMPLED_N){
         return;
     }
@@ -186,16 +184,16 @@ void tmx_processing_flood_fill(int r, int c, tmx_touch_t* touch){
     }
 
     visited[r][c] = true;
-    touch->area += s_oversampled_delta[r][c];
-    touch->centroid_x += (float)c * (float)s_oversampled_delta[r][c];
-    touch->centroid_y += (float)r * (float)s_oversampled_delta[r][c];
+    blob->area += s_oversampled_delta[r][c];
+    blob->centroid_x += (float)c * (float)s_oversampled_delta[r][c];
+    blob->centroid_y += (float)r * (float)s_oversampled_delta[r][c];
 
     //kernel 8-neighbors
     static const int dr[] = {-1,-1,-1,0,0,1,1,1};
     static const int dc[] = {-1,0,1,-1,1,-1,0,1};
 
     for(int k=0; k<8; k++){
-        tmx_processing_flood_fill(r + dr[k], c + dc[k], touch);
+        tmx_processing_flood_fill(r + dr[k], c + dc[k], blob);
     }
 }
 

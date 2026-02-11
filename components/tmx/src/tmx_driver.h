@@ -5,6 +5,7 @@
 
 /**
  * @brief Initialize the touchpad driver.
+ * @return esp_err_t to check if the driver initialization success.
  */
 esp_err_t tmx_driver_init(void);
 
