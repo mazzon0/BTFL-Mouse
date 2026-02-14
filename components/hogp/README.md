@@ -97,3 +97,4 @@ Future features will be:
 - support for Windows and MacOS
 - support for keyboard events and other types of HID events
 - boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)
+- strategy to negotiate transmission frequency
