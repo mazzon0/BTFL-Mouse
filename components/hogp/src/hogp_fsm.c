@@ -63,7 +63,7 @@ void hogp_task(void *params) {
                     uint8_t num_messages;
                     write_messages(messages, sizes, chrs, &num_messages, ctx);
 
-                    for (uint8_t i = 0; i < num_messages; i++) {
+                    for (uint8_t i = 0; i < num_messages; i++) {                        
                         hogp_result_t res = hogp_notify(messages[i], sizes[i], chrs[i]);
                         if (res == HOGP_OK) ctx->connection.tx_arrived = false;
                     }

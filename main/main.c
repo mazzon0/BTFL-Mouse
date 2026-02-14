@@ -25,12 +25,14 @@
 #define POLLING_RATE_MS 10	// 100Hz polling
 
 //Global variables
-static const char *TAG = "PowerSave";
+static const char *TAG = "BTFL Mouse";
 static int64_t last_event_time;
 static bool high_performance;
 static pmw3389_handle_t sensor_handle = NULL; // Handle to communicate with the sensor
 
 static TaskHandle_t tmx_task_handle = NULL;
+
+hogp_mouse_button_t button_codes[2] = {HOGP_MOUSE_BLEFT, HOGP_MOUSE_BRIGHT};
 
 /**
  * Define states and state machine structure
@@ -159,13 +161,13 @@ static void check_inactivity(void) {
 }
 
 void bt_connection_cb(bool connected) {
-    if (connected) ESP_LOGI("my_project", "Connected");
-    else ESP_LOGI("my_project", "Disconnected");
+    if (connected) ESP_LOGI(TAG, "Connected");
+    else ESP_LOGI(TAG, "Disconnected");
 }
 
 void bt_suspension_cb(bool suspended) {
-    if (suspended) ESP_LOGI("my_project", "Suspended");
-    else ESP_LOGI("my_project", "Not suspended");
+    if (suspended) ESP_LOGI(TAG, "Suspended");
+    else ESP_LOGI(TAG, "Not suspended");
 }
 
 void tmx_callback(tmx_gesture_t gesture) {
@@ -178,15 +180,15 @@ void tmx_callback(tmx_gesture_t gesture) {
     switch(gesture.type){
         case TMX_GESTURE_BUTTON_PRESSED:
             event.type = HOGP_DEVT_MOUSE_BUTTON_PRESSED;
-            event.button = gesture.button;
-            ESP_LOGI("Mouse", "Sending button pressed: %d", event.button);
+            event.button = button_codes[gesture.button];
+            ESP_LOGI(TAG, "Sending button pressed: %d", event.button);
             hogp_send(&event);
             break;
 
         case TMX_GESTURE_BUTTON_RELEASED:
             event.type = HOGP_DEVT_MOUSE_BUTTON_RELEASED;
-            event.button = gesture.button;
-            ESP_LOGI("Mouse", "Sending button released: %d", event.button);
+            event.button = button_codes[gesture.button];
+            ESP_LOGI(TAG, "Sending button released: %d", event.button);
             hogp_send(&event);
             break;
 
@@ -194,7 +196,7 @@ void tmx_callback(tmx_gesture_t gesture) {
             event.type = HOGP_DEVT_SCROLL_MOTION;
             event.x = gesture.dx;
             event.y = gesture.dy;
-            ESP_LOGI("Mouse", "Sending scroll: %d, %d", event.x, event.y);
+            ESP_LOGI(TAG, "Sending scroll: %d, %d", event.x, event.y);
             hogp_send(&event);
             break;
 
@@ -272,7 +274,7 @@ void fn_START(void) {
         ret = nvs_flash_init();
     }
     if (ret != ESP_OK) {
-        ESP_LOGE("my_project", "Failed to initialize nvs flash, error code: %d ", ret);
+        ESP_LOGE(TAG, "Failed to initialize nvs flash, error code: %d ", ret);
     }
 
     // Init HOGP component
@@ -289,7 +291,7 @@ void fn_START(void) {
 
     hogp_result_t res = hogp_setup(&hogp_init_info);
     if (res != HOGP_OK) {
-        ESP_LOGE("my_project", "Failed to initialize HOGP, error code: %d ", res);
+        ESP_LOGE(TAG, "Failed to initialize HOGP, error code: %d ", res);
     }
 
     /* Init touch driver and task */

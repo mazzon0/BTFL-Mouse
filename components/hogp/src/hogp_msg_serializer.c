@@ -51,12 +51,14 @@ static hogp_result_t add_event_to_message(hogp_message_t *message, hogp_data_eve
                 if (event->button & message->mouse_data.changed_buttons) return HOGP_ERR_INVALID_ARG;
                 message->mouse_data.buttons |= event->button;
                 hid_state->buttons |= event->button;
+                message->mouse_data.changed_buttons |=event->button;
                 break;
 
             case HOGP_DEVT_MOUSE_BUTTON_RELEASED:
                 if (event->button & message->mouse_data.changed_buttons) return HOGP_ERR_INVALID_ARG;
                 message->mouse_data.buttons &= ~event->button;
                 hid_state->buttons &= (0xFF & ~event->button);
+                message->mouse_data.changed_buttons |=event->button;
                 break;
 
             case HOGP_DEVT_CURSOR_MOTION:

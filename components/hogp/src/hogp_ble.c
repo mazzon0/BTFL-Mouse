@@ -680,14 +680,13 @@ static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, 
         0x09, 0x01,        //   Usage: Pointer
         0xA1, 0x00,        //   Collection: Physical
         
-        // TODO set all 8 buttons
-        // --- Buttons (3 buttons) ---
+        // --- Buttons (8 buttons) ---
         0x05, 0x09,        //     Usage Page: Button
         0x19, 0x01,        //     Usage Minimum: 0x01
-        0x29, 0x03,        //     Usage Maximum: 0x03
+        0x29, 0x08,        //     Usage Maximum: 0x08
         0x15, 0x00,        //     Logical Minimum: 0
         0x25, 0x01,        //     Logical Maximum: 1
-        0x95, 0x03,        //     Report Count: 3
+        0x95, 0x08,        //     Report Count: 8
         0x75, 0x01,        //     Report Size: 1
         0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,...)
 
