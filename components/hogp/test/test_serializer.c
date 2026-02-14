@@ -8,7 +8,7 @@ hogp_data_event_t queue[MAX_QUEUE_LENGTH];
 uint8_t queue_head = 0;
 uint8_t queue_tail = 0;
 
-// implementation that emulates xQueueReceive for testing
+// implementation that emulates xQueueReceive from FreeRTOS for testing
 int xQueueReceive(int queue_handle, hogp_data_event_t *event, int max_time) {
     if (queue_head == queue_tail) return -1;
 
@@ -17,7 +17,7 @@ int xQueueReceive(int queue_handle, hogp_data_event_t *event, int max_time) {
     return 0;
 }
 
-// implementation that emulates xQueuePush for testing
+// implementation that emulates xQueuePush from FreeRTOS for testing
 int xQueuePush(int queue_handle, hogp_data_event_t *event) {
     if (queue_head == (queue_tail + 1) % MAX_QUEUE_LENGTH) return -1;
 
@@ -213,7 +213,7 @@ int main() {
         printf("Success\n");
     }
 
-    // Test 6: All message types (Mixed sequence and buffer limits)
+    // Test 6: Mixed sequence
     {
         printf("Test 6 - mixed types & state persistence: "); fflush(stdout);
         
