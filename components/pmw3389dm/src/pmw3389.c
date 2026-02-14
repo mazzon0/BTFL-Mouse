@@ -45,7 +45,7 @@ struct pmw3389_dev_t {
 /**
  * @brief Circular buffer (per filtro media mobile)
  */
-#define FILTER_BUFFER_SIZE 16
+#define FILTER_BUFFER_SIZE 32
 
 typedef struct {
     int16_t buffer_x[FILTER_BUFFER_SIZE];

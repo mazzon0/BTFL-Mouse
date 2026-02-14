@@ -3,6 +3,10 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include "hogp_user_common.h"
+#include "hogp_data_events.h"
+
+#ifndef HOGP_TEST
 
 #include "esp_log.h"
 
@@ -16,8 +20,6 @@
 #include "nimble/ble.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-
-#include "hogp_user_common.h"
 
 /** @brief Tag used for ESP_LOG macros. */
 #define HID_TAG "HOGP"
@@ -40,6 +42,15 @@
     ESP_LOGI(HID_TAG, "INFO %s:%d (%s): " fmt, \
              FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
 
+#else
+    // definitions to make tests compile
+    #define QueueHandle_t int
+    #define ble_uuid16_t int
+    #define pdPASS 0
+    #define portTICK_PERIOD_MS 1
+    int xQueueReceive(int queue, hogp_data_event_t *event, int max_time);
+#endif
+
 /** @brief Total number of services exposed by the GATT server. */
 #define HOGP_NUM_SERVICES 3  // HID Service, Device Information Service, Battery Service
 
@@ -47,7 +58,7 @@
 #define HOGP_HANDLE_COUNT 4  // Report, Boot Mouse, Control Point, Battery Level
 
 /**
- * @brief  Structure holding the attribute handles for HOGP characteristics.
+ * @brief Structure holding the attribute handles for HOGP characteristics.
  * This union allows accessing handles either by index (for iteration) 
  * or by name (for specific logic).
  */
