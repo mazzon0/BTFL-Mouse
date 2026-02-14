@@ -86,6 +86,12 @@ idf_component_register(SRCS "main.c"
                        REQUIRES nvs_flash hogp)
 ```
 
+## Tests
+There are some unit tests that can be run on any host machine. The message serializer is the only part tested, since it is completely hardware independent. You can run the tests in the `test` directory.
+```bash
+cd test && make run
+```
+
 ## Incoming Features
 Future features will be:
 - support for Windows and MacOS
