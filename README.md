@@ -1,5 +1,7 @@
 # BTFL Mouse
 
+<img src="images/btfl-mouse.jpg" width="680" height="382">
+
 This project was developed for the Embedded Software for the Internet of Things course at University of Trento (Italy), held by Prof. Yildrim Kasim Sinan.
 This project aims to build a Bluetooth mouse that instead of having standard buttons, provides a touch surface. The project covers all different aspects needed to create a Bluetooth mouse from scratch:
 - PCB design
@@ -14,6 +16,7 @@ You can see the video presentation of the project [here](www.youtube.com). TODO 
 BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", which should be represented by an haptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
 
 ## Contributors
+
 - Ilaria Basanisi: developed the PMW3389DM optical sensor driver and the 3D printed mouse enclosure
 - Elena Carmagnani: workflow state machine design and implementation, low power consuption modes
 - Daniele Mazzon: Bluetooth HID implementation, battery monitoring system
@@ -31,15 +34,21 @@ The projects needs the following hardware:
 - step-up/boost converter (3-4.2V to 5V)
 - custom battery monitoring circuit
 
+<img src="images/20260212_143245.jpg" width="400" height="300">
+<img src="images/20260212_143256.jpg" width="400" height="300">
+<img src="images/20260212_143307.jpg" width="400" height="300">
+<img src="images/20260212_143319.jpg" width="400" height="300">
+<img src="images/20260212_143353.jpg" width="400" height="300">
+
 ## Software requirements
 
-- ESP-IDF versione 5.5
+- ESP-IDF version 5.5
 - Python 3.12 (only for touch gesture recognition debugging)
 - GCC 10.0 (only for unit tests)
 
 ## Setup
 
-Install ESP-IDF, which supports Windows, Linux and MacOS. You can find all the instructions [here](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32s3/get-started/index.html).
+Install ESP-IDF, which supports Windows, Linux and MacOS. You can find all the instructions [here](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32s3/get-started/index.html), following the instructions for `esp32s3` and a version `>= 5.5`.
 
 Download this repository.
 ```bash
@@ -57,7 +66,7 @@ Now you can build the project.
 idf.py build
 ```
 
-If you want to disable logging to get a faster executable, you can build the executable with the following command. TODO TEST THIS BUILD
+If you want to disable logging to get a faster executable, you can build the executable with the following command.
 ```bash
 idf.py -DCMAKE_C_FLAGS="-DLOG_LOCAL_LEVEL=0" build
 ```
