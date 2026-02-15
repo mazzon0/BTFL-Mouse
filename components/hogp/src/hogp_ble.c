@@ -690,11 +690,6 @@ static int hid_report_map_access_cb(uint16_t conn_handle, uint16_t attr_handle, 
         0x75, 0x01,        //     Report Size: 1
         0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,...)
 
-        // --- Padding (5 bits to complete the byte) ---
-        0x95, 0x01,        //     Report Count: 1
-        0x75, 0x05,        //     Report Size: 5
-        0x81, 0x03,        //     Input (Const,Var,Abs,No Wrap,Linear,...)
-
         // --- X, Y, Wheel (3 bytes) ---
         0x05, 0x01,        //     Usage Page: Generic Desktop Ctrls
         0x09, 0x30,        //     Usage: X

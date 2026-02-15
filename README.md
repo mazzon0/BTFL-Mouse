@@ -107,7 +107,7 @@ The custom PCBs can be found in the `pcb/` directory.
 │   └── README.md
 ├── pcb/
 │   └── pmw3389-sensor-board/
-├── images
+├── images/
 ├── dependencies.lock
 ├── CMakeLists.txt
 ├── sdkconfig
