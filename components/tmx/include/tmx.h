@@ -21,6 +21,7 @@ tmx_gesture_t tmx_pipeline_process(void);
 
 /**
  * @brief Callback function type for touch events
+ * @param event The touch event data structure containing details about the touch event.
  */
 
  void tmx_task(void *param);

@@ -163,6 +163,10 @@ void tmx_processing_blob_detection(void);
 
 /**
  * @brief Recursive flood fill algorithm to identify connected touch blobs.
+ * @param r Row index of the current pixel.
+ * @param c Column index of the current pixel.
+ * @param blob Pointer to the blob structure being filled with area and centroid data.
+ * This function marks visited pixels and accumulates blob properties.
  */
 void tmx_processing_flood_fill(int r, int c, tmx_blob_t* blob);
 
