@@ -34,12 +34,13 @@ The projects needs the following hardware:
 - step-up/boost converter (3-4.2V to 5V)
 - custom battery monitoring circuit
 
-<img src="images/20260212_143245.jpg" width="400" height="300">
-<img src="images/20260212_143256.jpg" width="400" height="300">
-<img src="images/20260212_143307.jpg" width="400" height="300">
-<img src="images/20260212_143319.jpg" width="400" height="300">
-<img src="images/20260212_143353.jpg" width="400" height="300">
-
+<p align="center">
+  <img src="images/20260212_143245.jpg" width="300">
+  <img src="images/20260212_143256.jpg" width="300">
+  <img src="images/20260212_143307.jpg" width="300">
+  <img src="images/20260212_143319.jpg" width="300">
+  <img src="images/20260212_143353.jpg" width="300">
+</p>
 ## Software requirements
 
 - ESP-IDF version 5.5
@@ -105,6 +106,7 @@ The custom PCBs can be found in the `pcb/` directory.
 │   └── README.md
 ├── pcb/
 │   └── pmw3389-sensor-board/
+├── images
 ├── dependencies.lock
 ├── CMakeLists.txt
 ├── sdkconfig
