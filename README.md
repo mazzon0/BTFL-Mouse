@@ -61,7 +61,7 @@ Now you can connect the COM port of the board to the computer, and then upload t
 idf.py flash
 ```
 
-The custom PCBs can be found in the `pcb\` directory. TODO
+The custom PCBs can be found in the `pcb/` directory. TODO
 
 ## Repository structure
 TODO
