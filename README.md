@@ -13,6 +13,12 @@ You can see the video presentation of the project [here](www.youtube.com). TODO 
 
 BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", which should be represented by an haptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
 
+## Contributors
+- Ilaria Basanisi: developed the PMW3389DM optical sensor driver and the 3D printed mouse enclosure
+- Elena Carmagnani: workflow state machine design and implementation, low power consuption modes
+- Daniele Mazzon: Bluetooth HID implementation, battery monitoring system
+- Federico G. Rubino: PCB circuit design and printing, touch gesture recognition pipeline
+
 ## Hardware requirements
 
 The projects needs the following hardware:
