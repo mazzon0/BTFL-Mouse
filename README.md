@@ -1,6 +1,6 @@
 # BTFL Mouse
 
-<img src="images/btfl-mouse.jpg" width="680" height="382">
+<img src="images/btfl-mouse.jpeg" width="680" height="382">
 
 This project was developed for the Embedded Software for the Internet of Things course at University of Trento (Italy), held by Prof. Yildrim Kasim Sinan.
 This project aims to build a Bluetooth mouse that instead of having standard buttons, provides a touch surface. The project covers all different aspects needed to create a Bluetooth mouse from scratch:
