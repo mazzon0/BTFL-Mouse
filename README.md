@@ -41,6 +41,7 @@ The projects needs the following hardware:
   <img src="images/20260212_143319.jpg" width="300">
   <img src="images/20260212_143353.jpg" width="300">
 </p>
+
 ## Software requirements
 
 - ESP-IDF version 5.5
