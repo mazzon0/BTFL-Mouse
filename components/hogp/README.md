@@ -4,7 +4,7 @@ An easy-to-use ESP-IDF component for implementing Bluetooth Low Energy (BLE) HID
 ## Features
 - Simplified Initialization: Set up a fully functional BLE HID device with a single configuration struct.
 - Thread-Safe API: `hogp_send()` can be called from any task or ISR.
-- Power efficient: only sends updates if there are changes and the host is listening.
+- Power efficient: only sends updates if there are changes and the host is listening, composes multiple messages together to save transmission energy.
 - Mouse Input: Supports cursor movement, vertical and horizontal scrolling, and up to 8 mouse buttons.
 - Battery Level: Support sending the battery level to the host.
 
@@ -86,9 +86,15 @@ idf_component_register(SRCS "main.c"
                        REQUIRES nvs_flash hogp)
 ```
 
+## Tests
+There are some unit tests that can be run on any host machine. The message serializer is the only part tested, since it is completely hardware independent. You can run the tests in the `test` directory.
+```bash
+cd test && make run
+```
+
 ## Incoming Features
 Future features will be:
 - support for Windows and MacOS
-- composing multiple events in a single message, in order to save energy
 - support for keyboard events and other types of HID events
 - boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)
+- strategy to negotiate transmission frequency

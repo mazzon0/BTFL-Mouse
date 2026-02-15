@@ -1,0 +1,3 @@
+[submodule "pcb/pmw3389-sensor-board"]
+	path = pcb/pmw3389-sensor-board
+	url = git@github.com:Federico-Rubino/pmw3389-sensor-board.git
