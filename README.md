@@ -53,7 +53,7 @@ idf.py build
 
 If you want to disable logging to get a faster executable, you can build the executable with the following command. TODO TEST THIS BUILD
 ```bash
-idf.py -DCMAKE_C_FLAGS="-DLOG_LOCAL_LEVEL=0" -DCMAKE_CXX_FLAGS="-DLOG_LOCAL_LEVEL=0" build
+idf.py -DCMAKE_C_FLAGS="-DLOG_LOCAL_LEVEL=0" build
 ```
 
 Now you can connect the COM port of the board to the computer, and then upload the executable to the board.
@@ -61,10 +61,41 @@ Now you can connect the COM port of the board to the computer, and then upload t
 idf.py flash
 ```
 
-The custom PCBs can be found in the `pcb/` directory. TODO
+The custom PCBs can be found in the `pcb/` directory.
 
 ## Repository structure
-TODO
+```
+.
+├── components/
+│   ├── hogp/           # HID Over GATT Profile (Bluetooth)
+│   │   ├── include/
+│   │   ├── src/
+│   │   ├── test/
+│   │   ├── CMakeLists.txt
+│   │   └── README.md
+│   ├── pmw3389dm/      # Optical Sensor
+│   │   ├── include/
+│   │   ├── src/
+│   │   ├── CMakeLists.txt
+│   │   └── README.md
+│   └── tmx/            # Touch matrix
+│       ├── include/
+│       ├── src/
+│       ├── CMakeLists.txt
+│       └── README.md
+├── main/               # Main component
+│   ├── src/
+│   ├── CMakeLists.txt
+│   ├── idf_component.yml
+│   └── README.md
+├── pcb/
+│   └── pmw3389-sensor-board/
+├── dependencies.lock
+├── CMakeLists.txt
+├── sdkconfig
+├── LICENSE
+└── README.md
+```
 
 ## Implementation Details
 
