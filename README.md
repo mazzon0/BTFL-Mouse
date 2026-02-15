@@ -24,7 +24,7 @@ The FSM defines five different operating states:
 - WORKING - Sends events to the Bluetooth host and checks the inactive_time: if it exceedes 5 minutes, state is changed to LOW_POWER_CONSUMPTION, if it exceedes 10 minutes, the current state is set to DEEP_SLEEP. 
 - DEEP_SLEEP - GPIO18 is configured as RTC GPIO for wakeup. CPU and RAM are turned off. On wakeup a System Reset will be triggered. State may change to WORKING or to DEEP_SLEEP, based on check_inactivity() function.
 - LOW_POWER_CONSUMPTION - Lowers CPU frequency to a maximum of 80MHz, disable Bluetooth and disable the Touch Sensor. From this state, 
-- OFF - ????
+- OFF - When battery level is low, the device goes off. You can use this state to either output or do something before the shut down.
 
 
 ### app_main(void) Function
