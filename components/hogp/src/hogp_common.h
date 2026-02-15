@@ -3,6 +3,10 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include "hogp_user_common.h"
+#include "hogp_data_events.h"
+
+#ifndef HOGP_TEST
 
 #include "esp_log.h"
 
@@ -17,11 +21,8 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 
-#include "hogp_user_common.h"
-#include "hogp_result.h"
-
 /** @brief Tag used for ESP_LOG macros. */
-#define HID_TAG "BLE HID Device"
+#define HID_TAG "HOGP"
 
 /** @brief Helper macro to get the filename without path for logging. */
 #define FILE_BASENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -41,14 +42,23 @@
     ESP_LOGI(HID_TAG, "INFO %s:%d (%s): " fmt, \
              FILE_BASENAME, __LINE__, __func__, ##__VA_ARGS__)
 
+#else
+    // definitions to make tests compile
+    #define QueueHandle_t int
+    #define ble_uuid16_t int
+    #define pdPASS 0
+    #define portTICK_PERIOD_MS 1
+    int xQueueReceive(int queue, hogp_data_event_t *event, int max_time);
+#endif
+
 /** @brief Total number of services exposed by the GATT server. */
-#define HOGP_NUM_SERVICES 2  // HID Service, Device Information Service (TODO battery service)
+#define HOGP_NUM_SERVICES 3  // HID Service, Device Information Service, Battery Service
 
 /** @brief Total number of characteristics handles tracked. */
-#define HOGP_HANDLE_COUNT 3  // Report, Boot Mouse, Keyboard (future), Battery (future)
+#define HOGP_HANDLE_COUNT 4  // Report, Boot Mouse, Control Point, Battery Level
 
 /**
- * @brief  Structure holding the attribute handles for HOGP characteristics.
+ * @brief Structure holding the attribute handles for HOGP characteristics.
  * This union allows accessing handles either by index (for iteration) 
  * or by name (for specific logic).
  */
@@ -58,7 +68,8 @@ typedef union {
     struct {
         uint16_t mouse_report;      /**< Handle for the Mouse Input Report. */
         uint16_t mouse_boot;        /**< Handle for the Mouse Boot Report. */
-        uint16_t control_point;     /**< Handle for the HID Control Point. */
+        uint16_t control_point;     /**< Handle for the HID Control Point. */   // TODO is it used?
+        uint16_t battery_level;     /**< Handle for the Battery Level */
     };
 } hogp_handles_t;
 
@@ -73,9 +84,24 @@ typedef union { // TODO optimize booleans to single bits
     struct {    // this struct should respect the hogp_handles_t anonymous struct
         bool mouse_report;    /**< True if Mouse Report notifications are enabled. */
         bool mouse_boot;      /**< True if Mouse Boot notifications are enabled. */
-        bool control_point; /**< True if Keyboard notifications are enabled. */
+        bool control_point;   /**< True if Control Point notifications are enabled. */  // TODO probably unused
+        bool battery_level;   /**< True if Battery Level nitifications are enabled */
     };
 } hogp_sub_t;
+
+/**
+ * @brief Enumeration of HOGP characteristics supported by the application.
+ * Used to identify which characteristic to notify or update.
+ * @note The order of these values MUST match the internal boolean order in 
+ * `hogp_common.h` (hogp_sub_t) to ensure correct subscription mapping.
+ */
+typedef enum {
+    MOUSE_REPORT,   /**< The Report characteristic (Input Report) for mouse data. */
+    MOUSE_BOOT,     /**< The Boot Mouse Input Report characteristic. */
+    CONTROL_POINT,  /**< The HID Control Point characteristic */
+    BATTERY_LEVEL,  /**< The Battery Level characteristic */
+    UNKNOWN_CHR,
+} hogp_characteristics_t;
 
 /**
  * @brief  HOGP Protocol Modes.
@@ -132,6 +158,7 @@ typedef enum {
  */
 typedef struct {
     uint8_t buttons;        /**< State of the buttons (1 pressed, 0 not pressed) */
+    uint8_t battery_level;  /**< Battery level (0 to 100) */
 } hogp_hid_state_t;
 
 /**
@@ -144,13 +171,16 @@ typedef struct {
     hogp_state_t state;            /**< Current FSM state. */
     QueueHandle_t control_queue;   /**< Queue for internal control events (connect, disconnect). */
     QueueHandle_t data_queue;      /**< Queue for user data events (mouse motion, clicks). */
-    uint32_t update_period_ms;     /**< Main task loop delay in milliseconds. */
+    hogp_connected_fn connected_cb;/**< Callback for connection events */
+    hogp_suspended_fn suspended_cb;/**< Callback for suspension events */
+    uint16_t register_period_ms;   /**< Main task loop delay in milliseconds */
+    uint16_t transmit_period_ms;   /**< BLE stack task delay in milliseconds */
     hogp_hid_state_t hid_state;    /**< Current HID state */
 } hogp_context_t;
 
 
 /**
- * @brief  Retrieves the global HOGP context.
+ * @brief Retrieves the global HOGP context.
  * Implemented as a singleton pattern.
  * @return Pointer to the static `hogp_context_t` instance.
  */

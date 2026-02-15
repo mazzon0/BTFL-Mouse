@@ -3,9 +3,10 @@ An easy-to-use ESP-IDF component for implementing Bluetooth Low Energy (BLE) HID
 
 ## Features
 - Simplified Initialization: Set up a fully functional BLE HID device with a single configuration struct.
-- Thread-Safe API: hogp_send_data can be called from any task or ISR.
-- Power efficient: only sends updates if there are changes and the host is listening.
-- Mouse Input: Supports relative cursor movement, scroll wheels, and up to 8 mouse buttons.
+- Thread-Safe API: `hogp_send()` can be called from any task or ISR.
+- Power efficient: only sends updates if there are changes and the host is listening, composes multiple messages together to save transmission energy.
+- Mouse Input: Supports cursor movement, vertical and horizontal scrolling, and up to 8 mouse buttons.
+- Battery Level: Support sending the battery level to the host.
 
 ## Installation
 Create a components folder in your ESP-IDF project (if it doesn't exist). Clone or copy this repository into ```components/hogp```. The component will be automatically detected by the ESP-IDF build system via the provided CMakeLists.txt.
@@ -22,6 +23,9 @@ Here is an simple example of a component using the HOGP component.
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
+
+void bt_connection_cb(bool connected);
+void bt_suspension_cb(bool suspended);
 
 void app_main(void) {
     // Init the NVS flash (required for bonding)
@@ -40,7 +44,10 @@ void app_main(void) {
             .device_name = "BTFL Mouse",
             .appearance = HOGP_APPEARANCE_MOUSE,
         },
-        .update_period_ms = 10,
+        .connected_cb = bt_connection_cb,
+        .suspended_cb = bt_suspension_cb,
+        .register_period_ms = 10,
+        .transmit_period_ms = 10,
     };
 
     hogp_result_t res = hogp_setup(&hogp_init_info);
@@ -62,6 +69,16 @@ void app_main(void) {
     // Shutdown HOGP component
     hogp_shutdown();
 }
+
+void bt_connection_cb(bool connected) {
+    if (connected) ESP_LOGI("my_project", "Connected");
+    else ESP_LOGI("my_project", "Disconnected");
+}
+
+void bt_suspension_cb(bool suspended) {
+    if (suspended) ESP_LOGI("my_project", "Suspended");
+    else ESP_LOGI("my_project", "Not suspended");
+}
 ```
 The provided component needs this CMakeLists.txt.
 ```CMakeLists.txt
@@ -69,12 +86,15 @@ idf_component_register(SRCS "main.c"
                        REQUIRES nvs_flash hogp)
 ```
 
+## Tests
+There are some unit tests that can be run on any host machine. The message serializer is the only part tested, since it is completely hardware independent. You can run the tests in the `test` directory.
+```bash
+cd test && make run
+```
+
 ## Incoming Features
 Future features will be:
 - support for Windows and MacOS
-- selecting the actual frequency of messages (right now only the frequency of the FSM can be chosen by the user)
-- composing multiple events in a single message, in order to save energy
 - support for keyboard events and other types of HID events
-- send the battery level to the host
 - boot protocol implementation (enabling to send mouse and keyboard events to simple hosts)
-- add callbacks to inform the system of upcoming events from the host
+- strategy to negotiate transmission frequency

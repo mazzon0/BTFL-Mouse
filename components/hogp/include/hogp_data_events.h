@@ -12,6 +12,7 @@ typedef enum {
     HOGP_DEVT_SCROLL_MOTION,          /**< Vertical or Horizontal scroll wheel movement. */
     HOGP_DEVT_MOUSE_BUTTON_PRESSED,   /**< A mouse button was pressed down. */
     HOGP_DEVT_MOUSE_BUTTON_RELEASED,  /**< A mouse button was released. */
+    HOGP_DEVT_BATTERY_LEVEL_UPDATE,   /**< The battery level has changed */
 } hogp_data_event_type_t;
 
 /**
@@ -22,11 +23,11 @@ typedef enum {
     HOGP_MOUSE_BLEFT    = 0x01, /**< Left Button (Button 1) */
     HOGP_MOUSE_BRIGHT   = 0x02, /**< Right Button (Button 2) */
     HOGP_MOUSE_BMIDDLE  = 0x04, /**< Middle Button (Button 3) */
-    HOGP_MOUSE_B4       = 0x08, /**< Side Button 4 */
-    HOGP_MOUSE_B5       = 0x10, /**< Side Button 5 */
-    HOGP_MOUSE_B6       = 0x20, /**< Extra Button 6 */
-    HOGP_MOUSE_B7       = 0x40, /**< Extra Button 7 */
-    HOGP_MOUSE_B8       = 0x80  /**< Extra Button 8 */
+    HOGP_MOUSE_B4       = 0x08, /**< Button 4 */
+    HOGP_MOUSE_B5       = 0x10, /**< Button 5 */
+    HOGP_MOUSE_B6       = 0x20, /**< Button 6 */
+    HOGP_MOUSE_B7       = 0x40, /**< Button 7 */
+    HOGP_MOUSE_B8       = 0x80  /**< Button 8 */
 } hogp_mouse_button_t;
 
 /**
@@ -51,6 +52,12 @@ typedef struct {
          * Used by HOGP_DEVT_MOUSE_BUTTON_PRESSED and HOGP_DEVT_MOUSE_BUTTON_RELEASED.
          */
         hogp_mouse_button_t button;
+
+        /**
+         * @brief Level of the battery (must be between 0 and 100)
+         * Used by HOGP_DEVT_BATTERY_LEVEL_UPDATE
+         */
+        uint8_t battery_level;
     };
 } hogp_data_event_t;
 

@@ -1,15 +1,11 @@
 #include "hogp_fsm.h"
 #include "hogp_common.h"
-#include "hogp_data_events.h"
 #include "hogp_control_events.h"
 #include "hogp_ble.h"
+#include "hogp_msg_serializer.h"
 
 // Utility functions
 static hogp_result_t state_transition(hogp_context_t *ctx);
-static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_protocol_t protocol);
-static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event);
-static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event);
-
 
 // Task
 
@@ -19,6 +15,10 @@ void hogp_task(void *params) {
     bool running = true;
     hogp_context_t *ctx = hogp_get_context();
     task = xTaskGetCurrentTaskHandle();
+
+    // Timer data
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(ctx->register_period_ms);
 
     INFO("HOGP task started");
 
@@ -51,25 +51,22 @@ void hogp_task(void *params) {
 
             case HOGP_STATE_CONNECTED:
                 //INFO("STATE CONNECTED");
-                uint8_t message[32];
-                uint8_t size;
+                {
+                    uint8_t messages[MAX_MESSAGES][MAX_MSG_LENGTH];
+                    uint8_t sizes[MAX_MESSAGES];
+                    hogp_characteristics_t chrs[MAX_MESSAGES];
 
-                hogp_protocol_t protocol = ctx->connection.protocol;
-                hogp_characteristics_t chr = (protocol == HOGP_PROTOCOL_REPORT) ? MOUSE_REPORT : MOUSE_BOOT; 
-                
-                hogp_result_t ret = write_message(message, &size, protocol);
-                
-                if (ret == HOGP_OK) {
-                    INFO("Sending report: %d bytes to %d", size, ctx->connection.conn_handle);
-                    hogp_result_t res = hogp_notify(message, size, chr);
+                    if (!ctx->connection.tx_arrived) {
+                        break;  // Waiting for TX
+                    }
 
-                    if (res == HOGP_OK) ctx->connection.tx_arrived = false;
-                }
-                else if (ret == HOGP_ERR_QUEUE_EMPTY || ret == HOGP_ERR_TX_BUSY || ret == HOGP_ERR_NOT_SUPPORTED || ret == HOGP_ERR_NOT_SUBSCRIBED) { 
-                    /* normal condition */ 
-                }
-                else { 
-                    WARN("write_message returned the unexpected value %d", ret); 
+                    uint8_t num_messages;
+                    write_messages(messages, sizes, chrs, &num_messages, ctx);
+
+                    for (uint8_t i = 0; i < num_messages; i++) {                        
+                        hogp_result_t res = hogp_notify(messages[i], sizes[i], chrs[i]);
+                        if (res == HOGP_OK) ctx->connection.tx_arrived = false;
+                    }
                 }
                 break;
             
@@ -82,7 +79,7 @@ void hogp_task(void *params) {
                 //WARN("Unhandled state %d", ctx->state);
         }
 
-        vTaskDelay(ctx->update_period_ms / portTICK_PERIOD_MS);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 
     INFO("HOGP task exiting");
@@ -148,6 +145,7 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
                 if (err != HOGP_OK) {
                     ERROR("Failed to store connection data");
                 }
+                else if (ctx->connected_cb != NULL) ctx->connected_cb(true);
             }
             else if (e.type == HOGP_CEVT_ADV_COMPLETE) {
                 WARN("ADV_COMPLETE → restarting advertising");
@@ -159,10 +157,12 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
             if (e.type == HOGP_CEVT_DISCONNECT) {
                 INFO("Transition CONNECTED → START (disconnect)");
                 ctx->state = HOGP_STATE_START;
+                if (ctx->connected_cb!= NULL) ctx->connected_cb(false);
             }
             else if (e.type == HOGP_CEVT_SUSPEND && e.suspended) {
                 INFO("Transition CONNECTED → SUSPENDED");
                 ctx->state = HOGP_STATE_SUSPENDED;
+                if (ctx->suspended_cb != NULL) ctx->suspended_cb(true);
             }
             else if (e.type == HOGP_CEVT_SHUTDOWN) {
                 INFO("Transition CONNECTED → CLOSED");
@@ -174,10 +174,12 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
             if (e.type == HOGP_CEVT_DISCONNECT) {
                 INFO("Transition SUSPENDED → START");
                 ctx->state = HOGP_STATE_START;
+                if (ctx->connected_cb!= NULL) ctx->connected_cb(false);
             }
             else if (e.type == HOGP_CEVT_SUSPEND && !e.suspended) {
                 INFO("Transition SUSPENDED → CONNECTED");
                 ctx->state = HOGP_STATE_CONNECTED;
+                if (ctx->suspended_cb != NULL) ctx->suspended_cb(false);
             }
             else if (e.type == HOGP_CEVT_SHUTDOWN) {
                 INFO("Transition SUSPENDED → CLOSED");
@@ -208,115 +210,4 @@ static hogp_result_t state_transition(hogp_context_t *ctx) {
     }
 
     return HOGP_OK;
-}
-
-/**
- * @brief Prepares a HID report message based on the active protocol.
- * Checks if the transport is ready (Flow control: `tx_arrived`).
- * Reads user inputs (mouse/keyboard events) from the `data_queue`.
- * Dispatches the event to the correct formatter (Report Mode vs Boot Mode).
- * @param message Buffer to store the formatted report data.
- * @param size Pointer to store the size of the generated report.
- * @param protocol The current active protocol (Report or Boot).
- * @return HOGP_OK on success.
- * @return HOGP_ERR_TX_BUSY if the BLE stack hasn't acknowledged the previous transmission.
- * @return HOGP_ERR_QUEUE_EMPTY if there is no data to send.
- * @return HOGP_ERR_NOT_SUPPORTED if the event type isn't handled.
- */
-static hogp_result_t write_message(uint8_t *message, uint8_t *size, hogp_protocol_t protocol) {
-    hogp_context_t *ctx = hogp_get_context();
-    hogp_data_event_t e;
-
-    if (!ctx->connection.tx_arrived) {
-        return HOGP_ERR_TX_BUSY;
-    }
-
-    if (xQueueReceive(ctx->data_queue, &e, 1 / portTICK_PERIOD_MS) != pdPASS) {
-        //WARN("Data queue is empty");
-        return HOGP_ERR_QUEUE_EMPTY;
-    }
-
-    INFO("Data event received: %d", e.type);
-
-    // Mouse message
-    if (e.type == HOGP_DEVT_CURSOR_MOTION ||
-        e.type == HOGP_DEVT_SCROLL_MOTION ||
-        e.type == HOGP_DEVT_MOUSE_BUTTON_PRESSED ||
-        e.type == HOGP_DEVT_MOUSE_BUTTON_RELEASED)
-    {
-        if (protocol == HOGP_PROTOCOL_REPORT) {
-            return write_mouse_report(message, size, &e);
-        }
-        else if (protocol == HOGP_PROTOCOL_BOOT) {
-            return write_mouse_boot(message, size, &e);
-        }
-    }
-
-    WARN("Unsupported data event type: %d", e.type);
-    return HOGP_ERR_NOT_SUPPORTED;
-}
-
-/**
- * @brief Formats a data event into a standard Mouse HID Report.
- * Uses the Report Map defined in `hogp_ble.c`.
- * Mapping: [Buttons, X, Y, Wheel].
- * Checks if the host has subscribed to notifications before formatting.
- * @param message Buffer to write the 4-byte report into.
- * @param size Pointer to write the size (4 bytes).
- * @param event The data event (button press, motion, etc.) to convert.
- * @return HOGP_OK on success.
- * @return HOGP_ERR_NOT_SUBSCRIBED if the host hasn't enabled notifications.
- */
-static hogp_result_t write_mouse_report(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
-    hogp_context_t *ctx = hogp_get_context();
-
-    if (event->type == HOGP_DEVT_CURSOR_MOTION || event->type == HOGP_DEVT_SCROLL_MOTION || event->type == HOGP_DEVT_MOUSE_BUTTON_PRESSED || event->type == HOGP_DEVT_MOUSE_BUTTON_RELEASED) {
-        if (!ctx->connection.notify_sub.mouse_report) return HOGP_ERR_NOT_SUBSCRIBED;   // if not subscribed, no need to send anything
-        *size = 4;
-    }
-
-    switch (event->type) {
-        case HOGP_DEVT_CURSOR_MOTION:
-            message[0] = 0x00;
-            message[1] = event->x;
-            message[2] = event->y;
-            message[3] = 0;
-            break;
-
-        case HOGP_DEVT_SCROLL_MOTION:
-            message[0] = 0x00;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = event->y;
-            break;
-
-        case HOGP_DEVT_MOUSE_BUTTON_PRESSED:
-            ctx->hid_state.buttons |= (1 << event->button);
-
-            message[0] = ctx->hid_state.buttons;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = 0;
-            break;
-
-        case HOGP_DEVT_MOUSE_BUTTON_RELEASED:
-            ctx->hid_state.buttons &= ~(1 << event->button);
-
-            message[0] = ctx->hid_state.buttons;
-            message[1] = 0;
-            message[2] = 0;
-            message[3] = 0;
-            break;
-    }
-
-    return HOGP_OK;
-}
-
-/**
- * @brief Formats a data event into a Mouse Boot Protocol Report.
- * @note This is currently not implemented (Stub).
- * @return HOGP_ERR_NOT_SUPPORTED always.
- */
-static hogp_result_t write_mouse_boot(uint8_t *message, uint8_t *size, hogp_data_event_t *event) {
-    return HOGP_ERR_NOT_SUPPORTED;
 }

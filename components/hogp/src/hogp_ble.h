@@ -3,17 +3,6 @@
 #include "hogp_common.h"
 
 /**
- * @brief Enumeration of HOGP characteristics supported by the application.
- * Used to identify which characteristic to notify or update.
- * @note The order of these values MUST match the internal boolean order in 
- * `hogp_common.h` (hogp_sub_t) to ensure correct subscription mapping.
- */
-typedef enum {
-    MOUSE_REPORT,   /**< The Report characteristic (Input Report) for mouse data. */
-    MOUSE_BOOT,     /**< The Boot Mouse Input Report characteristic. */
-} hogp_characteristics_t;
-
-/**
  * @brief Initializes the BLE Generic Access Profile (GAP).
  * Sets the device name and appearance based on the initialization info 
  * stored in the global context.
@@ -79,3 +68,4 @@ hogp_result_t hogp_notify(uint8_t *message, uint8_t size, hogp_characteristics_t
 hogp_result_t hogp_subscribe(uint16_t handle, uint8_t subscription_type);
 
 #endif /* HOGP_BLE_H */
+
