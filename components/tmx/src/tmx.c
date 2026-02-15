@@ -1,5 +1,8 @@
 #include "tmx.h"
 #include "tmx_processing.h"
+
+bool terminate_tmx_task = false;
+
 esp_err_t tmx_init(void)
 {
     return tmx_processing_init();
@@ -43,12 +46,20 @@ tmx_gesture_t tmx_pipeline_process(void)
 }
 
 void tmx_task(void *param){
+    ESP_LOGI("TMX", "Task started");
+    terminate_tmx_task = false;
     void (*callback)(tmx_gesture_t gesture) = (void (*)(tmx_gesture_t)) param;
-    while (1){
+    while (!terminate_tmx_task){
         tmx_gesture_t gesture = tmx_pipeline_process();
         if(gesture.type != TMX_GESTURE_NONE){
             callback(gesture);
         }
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
+
+    vTaskDelete(NULL);
+}
+
+void tmx_shutdown(void) {
+    terminate_tmx_task = true;
 }

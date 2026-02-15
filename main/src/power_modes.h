@@ -2,16 +2,24 @@
 #define POWER_MODES_H
 
 #include <stdbool.h>
+#include "tmx.h"
+typedef void (*gpio_isr_t)(void *arg);
 
 /**
- * @brief Configure Low Power Mode
- * 
- * @param bool high_performance
- * @return void
- * @details The function is called after 5 minutes of inactivity. It lowers the
- * CPU frequency and disables bluetooth and touch features.
+ * @brief Enter standard mode
  */
-void config_low_power_consumption(bool high_performance);
+void enter_standard_mode(void);
+
+/**
+ * @brief Enter low power mode
+ * @param isr interrupt service routine
+ */
+void enter_low_power_mode(gpio_isr_t isr);
+
+/**
+ * @brief Exit low power mode
+ */
+void exit_low_power_mode(void (*sensor_task)(void *), void (*tmx_callback)(tmx_gesture_t));
 
 /**
  * @brief Enter Deep Sleep mode

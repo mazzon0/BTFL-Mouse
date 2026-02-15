@@ -100,32 +100,6 @@ void tmx_callback(tmx_gesture_t gesture) {
 }
 
 /**
- * @brief Check inactivity and trigger sleep if needed
- * 
- * @param void
- * 
- * @return void
- * 
- * @details If the sensor is active, the function calulates the inactive_time.
- * If the time since the last motion detected exceedes 5 minutes, enter Light Sleep mode,
- * if it exceedes 10 minutes, enter Deep Sleep mode. Else it goes back to high performance state.
- */
-static void check_inactivity(void) {
-    int64_t current_time = esp_timer_get_time() / 1000;  // Convert to ms
-    int64_t inactive_time = current_time - last_event_time;
-   
-    if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM && inactive_time < INACTIVITY_TIMEOUT_MS_DS) {
-        /* low power consumption mode */
-        cur_state = LOW_POWER_CONSUMPTION;
-    } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
-        /* deep sleep mode */
-        cur_state = DEEP_SLEEP;
-    } else {
-        cur_state = WORKING;
-    }
-}
-
-/**
  * @brief Motion callback
  * @param
  * @return
@@ -162,17 +136,56 @@ static void battery_task(void *params) {
     ESP_LOGI(TAG, "Battery task started");
     
     while(1) {
-        // Send battery level and speel for 30 seconds
+        // Send battery level and sleep for 30 seconds
         send_battery_level();
         vTaskDelay(pdMS_TO_TICKS(30 * 1000));
     }
     vTaskDelete(NULL);
 }
 
+/**
+ * @brief Interrupt handler for motion interrupts
+ */
+void motion_handler(void *params) {
+    last_event_time = esp_timer_get_time() / 1000;
+    exit_low_power_mode(sensor_task, tmx_callback);
+    enter_standard_mode();
+    cur_state = WORKING;
+}
+
+/**
+ * @brief Check inactivity and trigger sleep if needed
+ * 
+ * @param void
+ * 
+ * @return void
+ * 
+ * @details If the sensor is active, the function calulates the inactive_time.
+ * If the time since the last motion detected exceedes 5 minutes, enter Light Sleep mode,
+ * if it exceedes 10 minutes, enter Deep Sleep mode. Else it goes back to high performance state.
+ */
+static void check_inactivity(void) {
+    int64_t current_time = esp_timer_get_time() / 1000;  // Convert to ms
+    int64_t inactive_time = current_time - last_event_time;
+   
+    if (inactive_time > INACTIVITY_TIMEOUT_MS_LPM && inactive_time < INACTIVITY_TIMEOUT_MS_DS) {
+        /* low power consumption mode */
+        if (cur_state != LOW_POWER_CONSUMPTION) {
+            enter_low_power_mode(motion_handler);
+        }
+        cur_state = LOW_POWER_CONSUMPTION;
+    } else if(inactive_time > INACTIVITY_TIMEOUT_MS_DS) {
+        /* deep sleep mode */
+        cur_state = DEEP_SLEEP;
+    } else {
+        cur_state = WORKING;
+    }
+}
+
 /* State functions */
 void fn_START(void) {
     high_performance = true;
-    config_low_power_consumption(high_performance);
+    enter_standard_mode();
 
     // Init NVS flash (required for bonding)
     esp_err_t ret = nvs_flash_init();
@@ -241,8 +254,9 @@ void fn_START(void) {
 }
 
 void fn_WORKING(void) {
+    ESP_LOGI(TAG, "WORKING");
     check_inactivity();
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
 }
 
 void fn_DEEP_SLEEP(void) {
@@ -252,12 +266,10 @@ void fn_DEEP_SLEEP(void) {
 }
 
 void fn_LOW_POWER_CONSUMPTION(void) {
-    config_low_power_consumption(!high_performance);
     check_inactivity();
+    vTaskDelay(pdMS_TO_TICKS(2000));
 }
 
 void fn_OFF(void) {
-    /* Codice batteria ??? */
-
     cur_state = START;
 }

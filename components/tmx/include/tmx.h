@@ -24,6 +24,11 @@ tmx_gesture_t tmx_pipeline_process(void);
  * @param event The touch event data structure containing details about the touch event.
  */
 
- void tmx_task(void *param);
+void tmx_task(void *param);
+
+/**
+ * @brief Close the TMX task.
+ */
+void tmx_shutdown(void);
 
 #endif

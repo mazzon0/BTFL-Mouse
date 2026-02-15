@@ -171,6 +171,11 @@ typedef void* pmw3389_handle_t;
 esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_handle);
 
 /**
+ * @brief Exits the pmw3389_start_motion_tracking_interrupt function
+ */
+void pmw3389_shutdown(void);
+
+/**
  * @brief Read a single register from the sensor
  * 
  * Performs a low-level SPI read operation with manual CS control.

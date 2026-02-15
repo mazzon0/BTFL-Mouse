@@ -27,6 +27,8 @@ static const char *TAG = "PMW3389";
 static TaskHandle_t g_motion_task_handle = NULL;
 static volatile bool g_motion_interrupt_flag = false;
 
+static bool terminate_loop = false;
+
 /**
  * @brief Internal device structure
  */
@@ -384,6 +386,10 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
 
     ESP_LOGI(TAG, "Initialization completed successfully");
     return ESP_OK;
+}
+
+void pmw3389_shutdown(void) {
+    terminate_loop = true;
 }
 
 esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data) {
@@ -881,8 +887,10 @@ void pmw3389_start_motion_tracking_interrupt(pmw3389_handle_t handle, uint16_t c
     
     TickType_t last_motion_time = xTaskGetTickCount();
     TickType_t start_time = xTaskGetTickCount();
+
+    terminate_loop = false;
     
-    while (1) {
+    while (!terminate_loop) {
         // Wait for interrupt notification (timeout 5 seconds)
         uint32_t notification_value = ulTaskNotifyTake(
             pdTRUE,                  // Clear on exit
