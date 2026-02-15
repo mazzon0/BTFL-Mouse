@@ -11,7 +11,7 @@ This project aims to build a Bluetooth mouse that instead of having standard but
 
 You can see the video presentation of the project [here](www.youtube.com). TODO INSERT THE LINK
 
-BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", with should be represented by an aptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
+BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", which should be represented by an haptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
 
 ## Hardware requirements
 
@@ -20,7 +20,7 @@ The projects needs the following hardware:
 - PMW3389DM-T3QU optical sensor by PixArt
 - custom PCB module for PMW3389DM-T3QU
 - custom capacitive touch electrode matrix
-- lithium battery (with some metrics)
+- lithium battery
 - recharging circuit TP4056
 - step-up/boost converter (3-4.2V to 5V)
 - custom battery monitoring circuit
@@ -28,7 +28,7 @@ The projects needs the following hardware:
 ## Software requirements
 
 - ESP-IDF versione 5.5
-- Python 3.??????????????? (only for touch gesture recognition debugging)
+- Python 3.12 (only for touch gesture recognition debugging)
 - GCC 10.0 (only for unit tests)
 
 ## Setup

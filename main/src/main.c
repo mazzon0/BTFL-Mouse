@@ -1,4 +1,5 @@
 #include "mouse_fsm.h"
+#include "esp_log.h"
 
 State_t cur_state;
 StateMachine_t StateMachine[] = {
@@ -10,6 +11,7 @@ StateMachine_t StateMachine[] = {
 };
 
 void app_main(void) {
+    esp_log_level_set("*", ESP_LOG_INFO);
     cur_state = START;
     while(1) {
         if(cur_state < NUM_STATES) {

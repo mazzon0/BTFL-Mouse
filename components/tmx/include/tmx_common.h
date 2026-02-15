@@ -17,7 +17,6 @@
  * @brief Mapping of TMX touch pads to ESP32-S3 touch pad channels.
  */
 static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {
-    TOUCH_PAD_NUM1,
     TOUCH_PAD_NUM2,
     TOUCH_PAD_NUM3,
     TOUCH_PAD_NUM4,
@@ -28,7 +27,8 @@ static const touch_pad_t tmx_touch_pads[TMX_NUM_TOUCH_PADS] = {
     TOUCH_PAD_NUM9,
     TOUCH_PAD_NUM10,
     TOUCH_PAD_NUM11,
-    TOUCH_PAD_NUM12
+    TOUCH_PAD_NUM12,
+    TOUCH_PAD_NUM13
 };
 
 /**

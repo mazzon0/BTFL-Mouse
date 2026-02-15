@@ -9,6 +9,7 @@
 #include "pmw3389.h"
 #include "nvs_flash.h"
 #include "power_modes.h"
+#include "battery_monitor.h"
 
 #define INACTIVITY_TIMEOUT_MS_LPM 300000	// 5 min
 #define INACTIVITY_TIMEOUT_MS_DS 600000 // 10 min
@@ -24,11 +25,31 @@ extern State_t cur_state;
 // Button codes to convert tmx gestures to hogp events
 hogp_mouse_button_t button_codes[2] = {HOGP_MOUSE_BLEFT, HOGP_MOUSE_BRIGHT};
 
+void send_battery_level(void) {
+    // Check battery level
+    uint16_t battery_level = check_battery();
+    ESP_LOGI(TAG, "sending battery level: %d \n", battery_level);
+    hogp_data_event_t event;
+    event.type = HOGP_DEVT_BATTERY_LEVEL_UPDATE;
+    event.battery_level = battery_level;
+
+    // Send many messages with the update
+    const int NUM_NOTIFICATIONS = 16;
+    const int DELAY = 50; // ms
+    for (int i = 0; i < NUM_NOTIFICATIONS; i++) {
+        hogp_send(&event);
+        vTaskDelay(pdMS_TO_TICKS(DELAY));   // needed to not pack the messages together during serialization
+    }
+}
+
 /**
  * Callback for handling disconnection events from Bluetooth
  */
 void bt_connection_cb(bool connected) {
-    if (connected) ESP_LOGI(TAG, "Connected");
+    if (connected) {
+        ESP_LOGI(TAG, "Connected");
+        send_battery_level();
+    }
     else ESP_LOGI(TAG, "Disconnected");
 }
 
@@ -134,6 +155,17 @@ static void sensor_task(void *pvParameters) {
     vTaskDelete(NULL);
 }
 
+static void battery_task(void *params) {
+    ESP_LOGI(TAG, "Battery task started");
+    
+    while(1) {
+        // Send battery level and speel for 30 seconds
+        send_battery_level();
+        vTaskDelay(pdMS_TO_TICKS(30 * 1000));
+    }
+    vTaskDelete(NULL);
+}
+
 /* State functions */
 void fn_START(void) {
     high_performance = true;
@@ -190,12 +222,15 @@ void fn_START(void) {
 
     /* Function to register the callback */
     ret = pmw3389_register_callback(sensor_handle, &pmw3389_callback, NULL);
-
-    /* Create task that will run in the background to listen for movements */
-    xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 10, NULL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register motion callback");
     }
+
+    /* Create task that will run in the background to listen for movements */
+    xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 10, NULL);
+
+    // Start battery monitoring task
+    xTaskCreate(battery_task, "Battery Task", 4096, NULL, 10, NULL);
     
     last_event_time = esp_timer_get_time()/1000;
 
