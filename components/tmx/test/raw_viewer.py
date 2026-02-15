@@ -1,4 +1,3 @@
-# touch_viewer_7x10.py
 # Serial reader and real-time 7x10 matrix viewer with binary violet/yellow display based on raw threshold.
 
 import serial
@@ -81,7 +80,7 @@ view.addItem(img)
 # index 0 → violet (cells under threshold)
 # index 1 → yellow (cells over threshold)
 lut = np.zeros((2, 3), dtype=np.ubyte)
-# Violet: for example RGB(128, 0, 128)
+# Violet: RGB(128, 0, 128)
 lut[0] = [128, 0, 128]
 # Yellow: RGB(255, 255, 0)
 lut[1] = [255, 255, 0]

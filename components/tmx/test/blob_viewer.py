@@ -1,3 +1,4 @@
+# blob viewer.
 import os
 os.environ["QT_API"] = "pyqt5"   # used by pyqtgraph
 
@@ -46,8 +47,6 @@ except Exception as e:
     ser = None
 
 
-
-# ==========================
 def serial_reader():
     global current_frame_data, running
 
@@ -135,7 +134,7 @@ def update_plot():
 
     frame_counter += 1
 
-    # filtro dita
+    # finger rejection
     filtered = [d for d in data if d['Area'] <= FINGER_REJECTION_THRESHOLD]
 
     if not filtered:
