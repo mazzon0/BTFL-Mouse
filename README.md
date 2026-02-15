@@ -1,24 +1,81 @@
-# Finite State Machine and Power Modes Management
+# BTFL Mouse
 
-## Key features
-- Configure **low power consumption modes**
-- Manage **tmx and pmw_3389** events with callback functions
-- Define the **State Machine** structure and implement the state functions
-- Implement primary **app_main(void)** function
+This project was developed for the Embedded Software for the Internet of Things course at University of Trento (Italy), held by Prof. Yildrim Kasim Sinan.
+This project aims to build a Bluetooth mouse that instead of having standard buttons, provides a touch surface. The project covers all different aspects needed to create a Bluetooth mouse from scratch:
+- PCB design
+- Optical sensor IC usage
+- Signal processing for gesture recognition
+- Bluetooth HID implementation
+- Power management
+- Battery monitoring
 
-### Low Power Consumption Modes
-- While in WORKING state, `config_low_power_consumption(bool high_performance)` function enables the device to work in high_performance mode, at the maximum frequence of 240MHz. After 5 minutes of inactivity, the device will go in the LOW_POWER_CONSUMPTION state and the function will lower CPU frequency to a maximum of 80MHz, disable Bluetooth and disable the Touch Sensor.
-- The `check_inactivity()` function is the one that manages the switching between WORKING and LOW_POWER_CONSUMPTION modes, and that sets the current state to DEEP_SLEEP if the inactive_time exceedes 10 minutes. 
-- The `enter_deep_sleep()` function prepares the ESP32 and the PMW3389 sensor for Deep Sleep. This power-saving-mode powers down the CPU and wipes the RAM. GPIO18 is configurd as RTC GPIO, is set as an input, so it can listen for the sensor's signal.
+You can see the video presentation of the project [here](www.youtube.com). TODO INSERT THE LINK
 
-### Finite State Machine
-The FSM defines five different operating states:
-- START - Configures power management, initializes NVS flash, HOGP component, touch driver and optical sensor and creates the respective tasks. Changes the state to WORKING.
-- WORKING - Sends events to the Bluetooth host and checks the inactive_time: if it exceedes 5 minutes, state is changed to LOW_POWER_CONSUMPTION, if it exceedes 10 minutes, the current state is set to DEEP_SLEEP. 
-- DEEP_SLEEP - GPIO18 is configured as RTC GPIO for wakeup. CPU and RAM are turned off. On wakeup a System Reset will be triggered. State may change to WORKING or to DEEP_SLEEP, based on check_inactivity() function.
-- LOW_POWER_CONSUMPTION - Lowers CPU frequency to a maximum of 80MHz, disable Bluetooth and disable the Touch Sensor. From this state, 
-- OFF - ????
+BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", with should be represented by an aptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
 
+## Hardware requirements
 
-### app_main(void) Function
-Main function first sets current state variable to START. Then enters and infinite loop, executing the current State-Machine-function.
+The projects needs the following hardware:
+- ESP32-S3 Devkit C1
+- PMW3389DM-T3QU optical sensor by PixArt
+- custom PCB module for PMW3389DM-T3QU
+- custom capacitive touch electrode matrix
+- lithium battery (with some metrics)
+- recharging circuit TP4056
+- step-up/boost converter (3-4.2V to 5V)
+- custom battery monitoring circuit
+
+## Software requirements
+
+- ESP-IDF versione 5.5
+- Python 3.??????????????? (only for touch gesture recognition debugging)
+- GCC 10.0 (only for unit tests)
+
+## Setup
+
+Install ESP-IDF, which supports Windows, Linux and MacOS. You can find all the instructions [here](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32s3/get-started/index.html).
+
+Download this repository.
+```bash
+git clone --recurse-submodules git@github.com:mazzon0/BTFL-Mouse.git && cd BTFL-Mouse
+```
+
+In general, refer to the [ESP-IDF documentation](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32s3/get-started/index.html) on how to setup the environment, since this is done differently on Windows, Linux, MacOS, VSCode extenstion and Eclipse expension.
+On a Linux and MacOS systems, it is sufficient to export the needed environment variables:
+```bash
+. path/to/esp-idf/export.sh
+```
+
+Now you can build the project.
+```bash
+idf.py build
+```
+
+If you want to disable logging to get a faster executable, you can build the executable with the following command. TODO TEST THIS BUILD
+```bash
+idf.py -DCMAKE_C_FLAGS="-DLOG_LOCAL_LEVEL=0" -DCMAKE_CXX_FLAGS="-DLOG_LOCAL_LEVEL=0" build
+```
+
+Now you can connect the COM port of the board to the computer, and then upload the executable to the board.
+```bash
+idf.py flash
+```
+
+The custom PCBs can be found in the `pcb\` directory. TODO
+
+## Repository structure
+TODO
+
+## Implementation Details
+
+You can find more details about general mouse FSM and power management implementation in `main/`.
+
+You can find more details about Bluetooth HID implementation in `components/hogp/`.
+
+You can find more details about touch gesture pipeline implementation in `components/tmx/`.
+
+You can find more details about optical sensor IC interfacing implementation in `components/pmw3389/`.
+
+## Thanks
+
+We would like to thank the university FabLab for their support for PCB design and printing, and for 3D printing of the case.
