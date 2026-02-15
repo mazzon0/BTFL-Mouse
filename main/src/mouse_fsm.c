@@ -25,6 +25,9 @@ extern State_t cur_state;
 // Button codes to convert tmx gestures to hogp events
 hogp_mouse_button_t button_codes[2] = {HOGP_MOUSE_BLEFT, HOGP_MOUSE_BRIGHT};
 
+/**
+ * Checks the battery level and sends it several time to ensure it arrives at destination
+ */
 void send_battery_level(void) {
     // Check battery level
     uint16_t battery_level = check_battery();
@@ -34,7 +37,7 @@ void send_battery_level(void) {
     event.battery_level = battery_level;
 
     // Send many messages with the update
-    const int NUM_NOTIFICATIONS = 16;
+    const int NUM_NOTIFICATIONS = 8;
     const int DELAY = 50; // ms
     for (int i = 0; i < NUM_NOTIFICATIONS; i++) {
         hogp_send(&event);

@@ -6,7 +6,8 @@
 /**
  * @brief Returns the battery level.
  * By connecting the battery voltage to GPIO_1, returns its level as a number from 0 to 100.
+ * The result is proportional to the remaining life time of the battery.
  */
-uint16_t check_battery(void);
+uint8_t check_battery(void);
 
 #endif
