@@ -11,7 +11,7 @@ This project aims to build a Bluetooth mouse that instead of having standard but
 - Power management
 - Battery monitoring
 
-You can see the video presentation of the project [here](www.youtube.com). TODO INSERT THE LINK
+You can see the video presentation of the project [here](https://www.youtube.com/watch?v=CJHa9P5cUGs).
 
 BTFL Mouse stands for Bluetooth Touch Feedback Low-Energy Mouse. It tries to incorporate all these features, except for "feedback", which should be represented by an haptic motor that gives a feedback when touching or doing gestures. Unfortuntely, we didn't have the time to add it yet.
 
