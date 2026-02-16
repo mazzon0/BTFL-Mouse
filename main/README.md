@@ -15,8 +15,8 @@
 The FSM defines five different operating states:
 - START - Configures power management, initializes NVS flash, HOGP component, touch driver and optical sensor and creates the respective tasks. Changes the state to WORKING.
 - WORKING - Sends events to the Bluetooth host and checks the inactive_time: if it exceedes 5 minutes, state is changed to LOW_POWER_CONSUMPTION.
-- DEEP_SLEEP - GPIO18 is configured as RTC GPIO for wakeup. CPU and RAM are turned off. On wakeup a System Reset will be triggered. State may change to WORKING or to DEEP_SLEEP, based on check_inactivity() function.
-- LOW_POWER_CONSUMPTION - Lowers CPU frequency to a maximum of 80MHz and disable the Touch Sensor. From this state, if a motion interrupt coming from PIN_MOTION GPIO occurs, motionhandler isr routine is called and exit_low_power_mode(void (*sensor_task)(void *), void (*tmx_callback)(tmx_gesture_t)) function configures back the standard mode and creates the tasks; lastly, enters WORKING state. If the inactive_time exceedes 10 minutes, the current state is set to DEEP_SLEEP. 
+- DEEP_SLEEP - GPIO18 is configured as RTC GPIO for wakeup. CPU and RAM are turned off. On wakeup a System Reset will be triggered. State may change to WORKING or to DEEP_SLEEP, based on the `check_inactivity()` function.
+- LOW_POWER_CONSUMPTION - Lowers CPU frequency to a maximum of 80MHz and disable the Touch Sensor. From this state, if a motion interrupt coming from PIN_MOTION GPIO occurs, `motion_handler(void* params)` isr routine is called and `exit_low_power_mode(void (*sensor_task)(void *), void (*tmx_callback)(tmx_gesture_t))` function configures back the standard mode and creates the tasks; lastly, enters WORKING state. If the inactive_time exceedes 10 minutes, the current state is set to DEEP_SLEEP. 
 - OFF - Sets the current state to START.
 
 
