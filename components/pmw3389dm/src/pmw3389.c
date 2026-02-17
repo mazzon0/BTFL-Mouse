@@ -8,7 +8,7 @@
  * 
  * @author Ilaria
  * @date 2025-12-21
- * @version 3.0 - MANUAL CS CONTROL (Arduino-style)
+ * @version 3.0 - MANUAL CS CONTROL
  */
 
 #include "pmw3389.h"
@@ -114,7 +114,7 @@ static void apply_moving_average_filter(int8_t raw_x, int8_t raw_y,
 
 
 /**
- * @brief CS Low - Start communication (Arduino style)
+ * @brief CS Low - Start communication
  */
 static inline void cs_low(pmw3389_handle_t handle) {
     struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
@@ -122,7 +122,7 @@ static inline void cs_low(pmw3389_handle_t handle) {
 }
 
 /**
- * @brief CS High - End communication (Arduino style)
+ * @brief CS High - End communication
  */
 static inline void cs_high(pmw3389_handle_t handle) {
     struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
@@ -130,7 +130,7 @@ static inline void cs_high(pmw3389_handle_t handle) {
 }
 
 /**
- * @brief SPI transfer single byte (Arduino SPI.transfer() style)
+ * @brief SPI transfer single byte
  */
 static uint8_t spi_transfer(pmw3389_handle_t handle, uint8_t data) {
     struct pmw3389_dev_t *dev = (struct pmw3389_dev_t *)handle;
@@ -210,7 +210,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
         ESP_LOGW(TAG, "RESET pin not configured!");
     }
 
-    // Configure CS pin (MANUAL control - like Arduino)
+    // Configure CS pin
     ESP_LOGI(TAG, "Configuring CS pin: GPIO%d (Manual control)", dev->pin_cs);
     gpio_config_t cs_conf = {
         .pin_bit_mask = (1ULL << dev->pin_cs),
@@ -252,7 +252,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = config->spi_clock_speed_hz,
         .mode = 3,  // SPI_MODE3
-        .spics_io_num = -1,  // -1 = Manual CS control (like Arduino!)
+        .spics_io_num = -1,  // -1 = Manual CS control
         .queue_size = 7,
         .flags = 0,
         .pre_cb = NULL,
@@ -319,7 +319,7 @@ esp_err_t pmw3389_init(const pmw3389_config_t *config, pmw3389_handle_t *out_han
 
     ESP_LOGI(TAG, "Executing sensor reset...");
     
-    // CS pulse (Arduino style)
+    // CS pulse
     cs_high(dev);
     delay_ms(1);
     cs_low(dev);
@@ -397,7 +397,7 @@ esp_err_t pmw3389_read_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t *data)
         return ESP_ERR_INVALID_ARG;
     }
 
-    // MANUAL CS control - Arduino style!
+    // MANUAL CS control
     cs_low(handle);
     spi_transfer(handle, addr & 0x7F);  // Clear bit 7 for read
     delay_us(100);
@@ -414,7 +414,7 @@ esp_err_t pmw3389_write_reg(pmw3389_handle_t handle, uint8_t addr, uint8_t data)
         return ESP_ERR_INVALID_ARG;
     }
 
-    // MANUAL CS control - Arduino style!
+    // MANUAL CS control
     cs_low(handle);
     spi_transfer(handle, addr | 0x80);  // Set bit 7 for write
     spi_transfer(handle, data);
@@ -459,7 +459,7 @@ static esp_err_t pmw3389_upload_srom(pmw3389_handle_t handle) {
         return ret;
     }
     
-    // Step 3: Burst upload (Manual CS like Arduino!)
+    // Step 3: Burst upload
     ESP_LOGI(TAG, "Uploading firmware in burst mode...");
     
     cs_low(handle);
